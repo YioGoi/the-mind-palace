@@ -4,6 +4,7 @@
  */
 
 import { Platform } from 'react-native';
+import { Palette } from './palette';
 
 const tintColorLight = '#0a7ea4';
 const tintColorDark = '#fff';
@@ -11,11 +12,16 @@ const tintColorDark = '#fff';
 export const Colors = {
   light: {
     text: '#11181C',
-    background: '#fff',
+    background: Palette.colorBgMain,
     tint: tintColorLight,
     icon: '#687076',
     tabIconDefault: '#687076',
     tabIconSelected: tintColorLight,
+    primary: Palette.colorPrimary,
+    primarySoft: Palette.colorPrimarySoft,
+    bgElevated: Palette.colorBgElevated,
+    accent: Palette.colorAccent,
+    border: Palette.colorBorder,
   },
   dark: {
     text: '#ECEDEE',
@@ -24,6 +30,11 @@ export const Colors = {
     icon: '#9BA1A6',
     tabIconDefault: '#9BA1A6',
     tabIconSelected: tintColorDark,
+    primary: Palette.colorPrimary,
+    primarySoft: Palette.colorAccentSoft,
+    bgElevated: '#1a1a1a',
+    accent: Palette.colorAccent,
+    border: '#111216',
   },
 };
 

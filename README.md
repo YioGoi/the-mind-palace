@@ -1,39 +1,95 @@
-# Welcome to your Expo app 👋
+# The Mind Palace 🧠
 
-This is an [Expo](https://expo.dev) project created with [`create-expo-app`](https://www.npmjs.com/package/create-expo-app).
+An iOS-first personal cognitive organizer that helps you manage your thoughts, tasks, and ideas with AI-powered context classification.
+
+## Features
+
+- **3 Category System**: URGENT, HAVE, NICE
+- **AI Context Classification**: Automatically organizes notes into meaningful contexts
+- **Smart Notifications**: Context-aware reminders with intelligent scheduling
+- **First-Time Setup**: Seed your initial contexts to train the AI
+- **Auto-expanding Accordions**: See your newly classified notes instantly
+
+## Architecture
+
+- **Frontend**: React Native + Expo
+- **State Management**: Zustand
+- **Database**: SQLite (expo-sqlite)
+- **AI**: OpenRouter API (via proxy server)
+- **Tests**: Jest with comprehensive coverage
 
 ## Get started
 
-1. Install dependencies
+### 1. Install dependencies
 
-   ```bash
-   npm install
-   ```
+```bash
+npm install
+cd openrouter-proxy && npm install && cd ..
+```
 
-2. Start the app
+### 2. Set up environment variables
 
-   ```bash
-   npx expo start
-   ```
+**Main App:**
+```bash
+cp .env.example .env
+# Edit .env and set EXPO_PUBLIC_CONTEXT_ENGINE_URL
+```
+
+**OpenRouter Proxy:**
+```bash
+cd openrouter-proxy
+cp .env.example .env
+# Edit .env and add your OPENROUTER_API_KEY from https://openrouter.ai/keys
+```
+
+### 3. Start the proxy server
+
+```bash
+cd openrouter-proxy
+npm start
+```
+
+### 4. Start the Expo app
+
+```bash
+npx expo start
+```
 
 In the output, you'll find options to open the app in a
 
 - [development build](https://docs.expo.dev/develop/development-builds/introduction/)
-- [Android emulator](https://docs.expo.dev/workflow/android-studio-emulator/)
 - [iOS simulator](https://docs.expo.dev/workflow/ios-simulator/)
-- [Expo Go](https://expo.dev/go), a limited sandbox for trying out app development with Expo
+- [Android emulator](https://docs.expo.dev/workflow/android-studio-emulator/)
+- [Expo Go](https://expo.dev/go)
 
-You can start developing by editing the files inside the **app** directory. This project uses [file-based routing](https://docs.expo.dev/router/introduction).
+## Project Structure
 
-## Get a fresh project
-
-When you're ready, run:
-
-```bash
-npm run reset-project
+```
+the-mind-palace/
+├── app/                    # Main application code
+│   ├── (tabs)/            # Tab screens (URGENT, HAVE, NICE)
+│   ├── db/                # Database repositories
+│   ├── services/          # Business logic
+│   ├── store/             # Zustand state management
+│   └── utils/             # Utilities and helpers
+├── services/              # Shared services
+│   └── context-engine/    # AI classification pipeline
+├── openrouter-proxy/      # Proxy server for OpenRouter API
+├── __tests__/             # Jest test suite
+└── components/            # Reusable UI components
 ```
 
-This command will move the starter code to the **app-example** directory and create a blank **app** directory where you can start developing.
+## Testing
+
+```bash
+npm test
+```
+
+All 22 tests should pass! ✅
+
+## Product Rules
+
+See [.github/copilot-instructions.md](.github/copilot-instructions.md) for detailed product behavior and architecture decisions.
 
 ## Learn more
 

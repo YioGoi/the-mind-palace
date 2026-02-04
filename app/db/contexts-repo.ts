@@ -1,0 +1,65 @@
+import { openDatabaseSync } from 'expo-sqlite'
+import { logger } from '../utils/logger'
+
+const DB_NAME = 'mindpalace.db'
+const TABLE = 'contexts'
+
+const db = openDatabaseSync(DB_NAME)
+
+async function execVoid(sql: string) {
+  try {
+    await db.execAsync(sql)
+  } catch (err) {
+    logger.error('SQL exec error (contexts)', { sql, err })
+    throw err
+  }
+}
+
+async function run(sql: string, params: any[] = []) {
+  try {
+    await db.runAsync(sql, params as any)
+  } catch (err) {
+    logger.error('SQL run error (contexts)', { sql, params, err })
+    throw err
+  }
+}
+
+async function getAll<T = any>(sql: string, params: any[] = []): Promise<T[]> {
+  try {
+    const rows = await db.getAllAsync<T>(sql, params as any)
+    return rows
+  } catch (err) {
+    logger.error('SQL getAll error (contexts)', { sql, params, err })
+    throw err
+  }
+}
+
+export async function initContextsRepo() {
+  await execVoid(`CREATE TABLE IF NOT EXISTS ${TABLE} (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    category TEXT NOT NULL,
+    createdAt INTEGER
+  );`)
+  logger.info('Contexts repo initialized')
+}
+
+export async function createContexts(names: string[], category = 'HAVE') {
+  const now = Date.now()
+  for (const name of names) {
+    const id = `${category.toLowerCase()}-${now}-${Math.random().toString(36).slice(2, 8)}`
+    await run(`INSERT INTO ${TABLE} (id, name, category, createdAt) VALUES (?, ?, ?, ?);`, [id, name, category, now])
+  }
+  logger.info('Created contexts', { count: names.length })
+}
+
+export async function listContexts() {
+  const rows = await getAll<any>(`SELECT * FROM ${TABLE};`)
+  return rows.map((r) => ({ id: r.id, name: r.name, category: r.category, createdAt: r.createdAt }))
+}
+
+export const ContextsRepo = {
+  init: initContextsRepo,
+  createContexts,
+  listContexts,
+}
