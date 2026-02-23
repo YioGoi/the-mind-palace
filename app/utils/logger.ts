@@ -36,6 +36,18 @@ export function log(level: LogLevel, message: string, meta?: Record<string, any>
 
   // Precise, machine-readable logging for deterministic testability.
   try {
+    // Guard: Suppress or rewrite known SQLite migration errors
+    if (
+      level === 'error' &&
+      meta &&
+      meta.err &&
+      typeof meta.err.message === 'string' &&
+      meta.err.message.includes('no such column: initialReminderAt')
+    ) {
+      const friendly = '[logger] Database schema is missing initialReminderAt column. Please run migrations.'
+      console.error(friendly)
+      return
+    }
     let s = '';
     if (payload === undefined) {
       s = '[logger] No payload provided';
@@ -47,6 +59,16 @@ export function log(level: LogLevel, message: string, meta?: Record<string, any>
       } catch (err) {
         s = '[logger] Unserializable payload';
       }
+    }
+    // Suppress logging of 'null' as an error or error message contains '"(null)"'
+    if (
+      level === 'error' && (
+        s === 'null' ||
+        (meta && meta.err && typeof meta.err.message === 'string' && meta.err.message.includes('"(null)"'))
+      )
+    ) {
+      console.warn('[logger] Error log suppressed: null value or (null) error message')
+      return
     }
     if (level === 'error') {
       console.error(s);

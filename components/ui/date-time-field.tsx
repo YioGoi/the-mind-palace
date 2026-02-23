@@ -1,0 +1,188 @@
+import { Palette } from '@/constants/palette'
+import DateTimePicker, { DateTimePickerEvent } from '@react-native-community/datetimepicker'
+import React, { useState } from 'react'
+import { Keyboard, Modal, Platform, StyleSheet, Text, TouchableOpacity, View } from 'react-native'
+
+export type DateTimeFieldProps = {
+  label: string
+  value: Date | null
+  onChange: (date: Date | null) => void
+  minimumDate?: Date
+  maximumDate?: Date
+  mode?: 'date' | 'time' | 'datetime'
+  disabled?: boolean
+  testID?: string
+}
+
+export const DateTimeField: React.FC<DateTimeFieldProps> = ({
+  label,
+  value,
+  onChange,
+  minimumDate,
+  maximumDate,
+  mode = 'datetime',
+  disabled = false,
+  testID,
+}) => {
+  const [show, setShow] = useState(false)
+  const [tempDate, setTempDate] = useState<Date>(value || new Date())
+
+  const formatted = value
+    ? `${value.getDate().toString().padStart(2, '0')} ${value.toLocaleString('default', { month: 'short' })} ${value.getFullYear()}, ${value.getHours().toString().padStart(2, '0')}:${value.getMinutes().toString().padStart(2, '0')}`
+    : 'Not set'
+
+  const openPicker = () => {
+    Keyboard.dismiss()
+    setTempDate(value || new Date())
+    setShow(true)
+  }
+
+  const closePicker = () => setShow(false)
+
+  const handleConfirm = () => {
+    setShow(false)
+    onChange(tempDate)
+  }
+
+  const handleCancel = () => {
+    setShow(false)
+    setTempDate(value || new Date())
+  }
+
+  // For Android, use native dialog
+  const handleAndroidChange = (event: DateTimePickerEvent, selectedDate?: Date) => {
+    if (event.type === 'set' && selectedDate) {
+      setShow(false)
+      onChange(selectedDate)
+    } else {
+      setShow(false)
+    }
+  }
+
+  return (
+    <View style={styles.fieldContainer}>
+      <Text style={styles.label}>{label}</Text>
+      <TouchableOpacity
+        style={[styles.valueButton, disabled && styles.disabled]}
+        onPress={openPicker}
+        disabled={disabled}
+        testID={testID}
+      >
+        <Text style={styles.valueText}>{formatted}</Text>
+      </TouchableOpacity>
+      {show && Platform.OS === 'ios' && (
+        <Modal
+          visible={show}
+          animationType="slide"
+          transparent
+          onRequestClose={closePicker}
+        >
+          <TouchableOpacity style={styles.modalBackdrop} activeOpacity={1} onPress={closePicker} />
+          <View style={styles.modalContent}>
+            <DateTimePicker
+              value={tempDate}
+              mode={mode}
+              display="spinner"
+              onChange={(_e, d) => d && setTempDate(d)}
+              minimumDate={minimumDate}
+              maximumDate={maximumDate}
+              style={{ backgroundColor: 'white' }}
+            />
+            <View style={styles.modalActions}>
+              <TouchableOpacity style={styles.cancelButton} onPress={handleCancel}>
+                <Text style={styles.cancelText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.confirmButton} onPress={handleConfirm}>
+                <Text style={styles.confirmText}>Confirm</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </Modal>
+      )}
+      {show && Platform.OS === 'android' && (
+        <DateTimePicker
+          value={value || new Date()}
+          mode={mode}
+          display="default"
+          onChange={handleAndroidChange}
+          minimumDate={minimumDate}
+          maximumDate={maximumDate}
+        />
+      )}
+    </View>
+  )
+}
+
+const styles = StyleSheet.create({
+  fieldContainer: {
+    marginBottom: 16,
+  },
+  label: {
+    fontSize: 14,
+    color: Palette.colorTextSecondary,
+    marginBottom: 4,
+    fontWeight: '600',
+  },
+  valueButton: {
+    backgroundColor: Palette.colorBgElevated,
+    borderRadius: 10,
+    paddingVertical: 14,
+    paddingHorizontal: 16,
+    borderWidth: 1,
+    borderColor: Palette.colorBorder,
+  },
+  valueText: {
+    fontSize: 16,
+    color: Palette.colorTextMain,
+  },
+  disabled: {
+    opacity: 0.5,
+  },
+  modalBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.3)',
+  },
+  modalContent: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'white',
+    borderTopLeftRadius: 16,
+    borderTopRightRadius: 16,
+    padding: 16,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: -2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    elevation: 10,
+  },
+  modalActions: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    marginTop: 12,
+    gap: 12,
+  },
+  cancelButton: {
+    paddingVertical: 10,
+    paddingHorizontal: 18,
+    borderRadius: 8,
+    backgroundColor: Palette.colorBgElevated,
+  },
+  cancelText: {
+    color: Palette.colorTextSecondary,
+    fontWeight: '600',
+    fontSize: 16,
+  },
+  confirmButton: {
+    paddingVertical: 10,
+    paddingHorizontal: 18,
+    borderRadius: 8,
+    backgroundColor: Palette.colorPrimary,
+  },
+  confirmText: {
+    color: '#fff',
+    fontWeight: '600',
+    fontSize: 16,
+  },
+})

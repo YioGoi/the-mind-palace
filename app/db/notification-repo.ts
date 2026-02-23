@@ -1,85 +1,108 @@
+import * as Crypto from 'expo-crypto'
 import { openDatabaseSync } from 'expo-sqlite'
 import { logger } from '../utils/logger'
 
 const DB_NAME = 'mindpalace.db'
-const TABLE_NAME = 'scheduled_notifications'
 
-export type ScheduledRow = {
-  id?: number
+export type ScheduledNotification = {
+  id: string
   noteId: string
   notificationId: string
-  type: 'HAVE' | 'URGENT'
-  scheduledAt: number
-  meta?: string
+  triggerAt: number
+  createdAt: number
 }
 
 const db = openDatabaseSync(DB_NAME)
 
-async function execVoid(sql: string) {
-  try {
-    await db.execAsync(sql)
-  } catch (err) {
-    logger.error('SQL exec error', { sql, err })
-    throw err
-  }
-}
-
-async function run(sql: string, params: any[] = []) {
-  try {
-    await db.runAsync(sql, params as any)
-  } catch (err) {
-    logger.error('SQL run error', { sql, params, err })
-    throw err
-  }
-}
-
-async function getAll<T = any>(sql: string, params: any[] = []): Promise<T[]> {
-  try {
-    const rows = await db.getAllAsync<T>(sql, params as any)
-    return rows
-  } catch (err) {
-    logger.error('SQL getAll error', { sql, params, err })
-    throw err
-  }
-}
-
 export async function initRepo() {
-  await execVoid(`CREATE TABLE IF NOT EXISTS ${TABLE_NAME} (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    noteId TEXT NOT NULL,
-    notificationId TEXT NOT NULL,
-    type TEXT NOT NULL,
-    scheduledAt INTEGER NOT NULL,
-    meta TEXT
-  );`)
-  logger.info('Notification repo initialized')
+  try {
+    await db.execAsync(`
+      CREATE TABLE IF NOT EXISTS note_notifications (
+        id TEXT PRIMARY KEY,
+        noteId TEXT NOT NULL,
+        notificationId TEXT NOT NULL,
+        triggerAt INTEGER NOT NULL,
+        createdAt INTEGER NOT NULL,
+        FOREIGN KEY (noteId) REFERENCES notes(id) ON DELETE CASCADE
+      );
+      CREATE INDEX IF NOT EXISTS idx_note_notifications_noteId ON note_notifications(noteId);
+      CREATE INDEX IF NOT EXISTS idx_note_notifications_triggerAt ON note_notifications(triggerAt);
+    `)
+    logger.info('NotificationRepo initialized')
+  } catch (err) {
+    logger.error('NotificationRepo init failed', { err })
+    throw err
+  }
 }
 
-export async function saveScheduled(row: ScheduledRow) {
-  await run(
-    `INSERT INTO ${TABLE_NAME} (noteId, notificationId, type, scheduledAt, meta) VALUES (?, ?, ?, ?, ?);`,
-    [row.noteId, row.notificationId, row.type, row.scheduledAt, row.meta ?? null]
-  )
-  logger.info('Saved scheduled', { noteId: row.noteId, notificationId: row.notificationId })
+export async function saveScheduled(noteId: string, notificationId: string, triggerAt: number): Promise<void> {
+  const id = Crypto.randomUUID()
+  const now = Date.now()
+  try {
+    await db.runAsync(
+      `INSERT INTO note_notifications (id, noteId, notificationId, triggerAt, createdAt) VALUES (?, ?, ?, ?, ?)`,
+      [id, noteId, notificationId, triggerAt, now]
+    )
+    logger.info('Saved scheduled notification', { id, noteId, notificationId, triggerAt })
+  } catch (err) {
+    logger.error('Save scheduled notification failed', { err })
+    throw err
+  }
 }
 
-export async function getScheduledByNote(noteId: string): Promise<ScheduledRow[]> {
-  const rows = await getAll<ScheduledRow>(`SELECT * FROM ${TABLE_NAME} WHERE noteId = ?;`, [noteId])
-  return rows
+export async function getScheduledByNote(noteId: string): Promise<ScheduledNotification[]> {
+  try {
+    const rows = await db.getAllAsync<any>(
+      `SELECT * FROM note_notifications WHERE noteId = ? ORDER BY triggerAt ASC`,
+      [noteId]
+    )
+    return rows.map(row => ({
+      id: row.id,
+      noteId: row.noteId,
+      notificationId: row.notificationId,
+      triggerAt: row.triggerAt,
+      createdAt: row.createdAt,
+    }))
+  } catch (err) {
+    logger.error('Get scheduled by note failed', { noteId, err })
+    throw err
+  }
 }
 
-export async function deleteByNotificationId(notificationId: string) {
-  await run(`DELETE FROM ${TABLE_NAME} WHERE notificationId = ?;`, [notificationId])
-  logger.info('Deleted scheduled by notificationId', { notificationId })
+export async function deleteByNotificationId(notificationId: string): Promise<void> {
+  try {
+    await db.runAsync(`DELETE FROM note_notifications WHERE notificationId = ?`, [notificationId])
+    logger.info('Deleted scheduled notification', { notificationId })
+  } catch (err) {
+    logger.error('Delete by notificationId failed', { notificationId, err })
+    throw err
+  }
 }
 
-export async function deleteAllForNote(noteId: string) {
-  await run(`DELETE FROM ${TABLE_NAME} WHERE noteId = ?;`, [noteId])
-  logger.info('Deleted all scheduled for note', { noteId })
+export async function deleteAllForNote(noteId: string): Promise<void> {
+  try {
+    await db.runAsync(`DELETE FROM note_notifications WHERE noteId = ?`, [noteId])
+    logger.info('Deleted all scheduled notifications for note', { noteId })
+  } catch (err) {
+    logger.error('Delete all for note failed', { noteId, err })
+    throw err
+  }
 }
 
-export async function listAllScheduled(): Promise<ScheduledRow[]> {
-  return await getAll<ScheduledRow>(`SELECT * FROM ${TABLE_NAME};`)
+export async function listAllScheduled(): Promise<ScheduledNotification[]> {
+  try {
+    const rows = await db.getAllAsync<any>(`SELECT * FROM note_notifications ORDER BY triggerAt ASC`)
+    return rows.map(row => ({
+      id: row.id,
+      noteId: row.noteId,
+      notificationId: row.notificationId,
+      triggerAt: row.triggerAt,
+      createdAt: row.createdAt,
+    }))
+  } catch (err) {
+    logger.error('List all scheduled failed', { err })
+    throw err
+  }
 }
 
 export const NotificationRepo = {

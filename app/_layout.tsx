@@ -3,6 +3,7 @@ import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import React, { useEffect, useRef } from 'react';
 import { AppState, AppStateStatus } from 'react-native';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import 'react-native-reanimated';
 
 import { useColorScheme } from '@/hooks/use-color-scheme';
@@ -25,16 +26,11 @@ export default function RootLayout() {
     // Initialize notification system DB etc.
     NotificationManager.initNotificationSystem().catch((e) => logger.error('Failed to init notifications', { err: e }))
 
-    // Reconcile on initial mount (cold start) using real NotesRepo
+    // Reconcile on initial mount (cold start)
     import('./db/notes-repo').then(async (mod) => {
       await mod.NotesRepo.init()
       try {
-        await NotificationManager.reconcile(
-          RECONCILE_WINDOW_MS,
-          async (id: string) => await mod.NotesRepo.getById(id),
-          async () => await mod.NotesRepo.listAll(),
-          __DEV__
-        )
+        await NotificationManager.reconcileUrgentNotes(__DEV__)
       } catch (e) {
         logger.error('Failed to reconcile on start', { err: e })
       }
@@ -60,15 +56,8 @@ export default function RootLayout() {
 
       if (nextAppState === 'active') {
         logger.info('App resumed: running reconciliation')
-        // Use NotesRepo.getById for resume reconcile
-        import('./db/notes-repo').then((mod) => {
-          NotificationManager.reconcile(
-            RECONCILE_WINDOW_MS,
-            async (id) => await mod.NotesRepo.getById(id),
-            async () => await mod.NotesRepo.listAll(),
-            __DEV__
-          ).catch((e) => logger.error('Failed to reconcile on resume', { err: e }))
-        }).catch((e) => logger.error('Failed to load notes repo on resume', { err: e }))
+        NotificationManager.reconcileUrgentNotes(__DEV__)
+          .catch((e) => logger.error('Failed to reconcile on resume', { err: e }))
       }
       appState.current = nextAppState
     }
@@ -83,12 +72,14 @@ export default function RootLayout() {
   }, [router])
 
   return (
-    <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
-      <Stack>
-        <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-        <Stack.Screen name="modal" options={{ presentation: 'modal', title: 'Modal' }} />
-      </Stack>
-      <StatusBar style="auto" />
-    </ThemeProvider>
+    <GestureHandlerRootView style={{ flex: 1 }}>
+      <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
+        <Stack>
+          <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+          <Stack.Screen name="modal" options={{ presentation: 'modal', title: 'Modal' }} />
+        </Stack>
+        <StatusBar style="auto" />
+      </ThemeProvider>
+    </GestureHandlerRootView>
   );
 }

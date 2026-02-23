@@ -1,7 +1,10 @@
 import { ThemedText } from '@/components/themed-text'
 import { Palette } from '@/constants/palette'
+import DateTimePicker from '@react-native-community/datetimepicker'
 import React, { useState } from 'react'
 import { Alert, Modal, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native'
+import { NotesRepo } from '../app/db/notes-repo'
+import { NotificationManager } from '../app/services/notification-manager'
 import { logger } from '../app/utils/logger'
 
 type Props = {
@@ -15,18 +18,38 @@ export const NewNoteModal: React.FC<Props> = ({ visible, onClose, category, onCr
   const [title, setTitle] = useState('')
   const [body, setBody] = useState('')
   const [loading, setLoading] = useState(false)
+  const [reminderDate, setReminderDate] = useState<Date | null>(null)
+  const [dueDate, setDueDate] = useState<Date | null>(null)
+  const [showReminderPicker, setShowReminderPicker] = useState(false)
+  const [showDuePicker, setShowDuePicker] = useState(false)
 
   async function onCreate() {
+    if (loading) return
     if (!title.trim()) {
       Alert.alert('Title required', 'Please provide a title for the note')
       return
     }
     setLoading(true)
     try {
-      const note = await (await import('../app/services/note-creator')).createNote({ title: title.trim(), body: body.trim() || undefined, category })
+      // Create note first (no reminders yet)
+      const note = await (await import('../app/services/note-creator')).createNote({
+        title: title.trim(),
+        body: body.trim() || undefined,
+        category: category as 'HAVE' | 'URGENT' | 'NICE'
+      })
+      // Save reminders using NotesRepo and schedule notifications
+      if (category === 'URGENT' && reminderDate && dueDate) {
+        await NotesRepo.updateUrgentReminders(note.id, reminderDate!.getTime(), dueDate!.getTime())
+        await NotificationManager.scheduleUrgentBatch(note.id, __DEV__)
+      } else if (reminderDate) {
+        await NotesRepo.updateReminder(note.id, reminderDate!.getTime())
+        await NotificationManager.scheduleSingleReminder(note.id, reminderDate!.getTime())
+      }
       onCreated?.(note)
       setTitle('')
       setBody('')
+      setReminderDate(null)
+      setDueDate(null)
       onClose()
     } catch (e) {
       logger.error('Failed creating note', { err: e })
@@ -43,6 +66,50 @@ export const NewNoteModal: React.FC<Props> = ({ visible, onClose, category, onCr
           <Text style={styles.title}>New note ({category})</Text>
           <TextInput placeholder="Title" value={title} onChangeText={setTitle} style={styles.input} />
           <TextInput placeholder="Body (optional)" value={body} onChangeText={setBody} style={[styles.input, { height: 80 }]} multiline />
+          {/* Reminder picker */}
+          <TouchableOpacity
+            style={[styles.input, { backgroundColor: '#f9f9f9', justifyContent: 'center' }]}
+            onPress={() => setShowReminderPicker(true)}
+            activeOpacity={0.8}
+          >
+            <Text style={{ color: '#666' }}>
+              {reminderDate ? `Reminder: ${reminderDate.toLocaleString()}` : 'Set Reminder'}
+            </Text>
+          </TouchableOpacity>
+          {showReminderPicker && (
+            <DateTimePicker
+              value={reminderDate || new Date()}
+              mode="datetime"
+              display="default"
+              onChange={(event, date) => {
+                setShowReminderPicker(false)
+                if (date) setReminderDate(date)
+              }}
+            />
+          )}
+          {/* Due date picker for urgent notes */}
+          {category === 'URGENT' && (
+            <TouchableOpacity
+              style={[styles.input, { backgroundColor: '#f9f9f9', justifyContent: 'center' }]}
+              onPress={() => setShowDuePicker(true)}
+              activeOpacity={0.8}
+            >
+              <Text style={{ color: '#666' }}>
+                {dueDate ? `Due Date: ${dueDate.toLocaleString()}` : 'Set Due Date'}
+              </Text>
+            </TouchableOpacity>
+          )}
+          {category === 'URGENT' && showDuePicker && (
+            <DateTimePicker
+              value={dueDate || new Date()}
+              mode="datetime"
+              display="default"
+              onChange={(event, date) => {
+                setShowDuePicker(false)
+                if (date) setDueDate(date)
+              }}
+            />
+          )}
           <View style={styles.buttons}>
             <TouchableOpacity
               style={[styles.actionBtn, { backgroundColor: '#eee' }]}

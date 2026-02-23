@@ -1,4 +1,5 @@
 import { ContextsRepo } from '../app/db/contexts-repo'
+import { FeedbackRepo } from '../app/db/feedback-repo'
 import { NotesRepo } from '../app/db/notes-repo'
 import { useNotesStore } from '../app/store/notes-store'
 import { logger } from '../app/utils/logger'
@@ -35,14 +36,27 @@ export async function classifyNoteAsync(noteId: string) {
   }
   const contexts = await ContextsRepo.listContexts();
   logger.info('Fetched contexts for classification', { noteId, contextCount: contexts.length, contexts });
-  // TODO: fetch feedback
+  
+  // Fetch recent user feedback to improve AI accuracy
+  const recentFeedback = await FeedbackRepo.getRecentFeedback(50);
+  const formattedFeedback: UserFeedback = recentFeedback.map(fb => ({
+    contextId: fb.userChosenContextId,
+    feedback: fb.feedback
+  }));
+  logger.info('Fetched user feedback for classification', { 
+    noteId, 
+    feedbackCount: formattedFeedback.length,
+    correctCount: formattedFeedback.filter(f => f.feedback === 'correct').length,
+    incorrectCount: formattedFeedback.filter(f => f.feedback === 'incorrect').length
+  });
+  
   try {
     logger.info('Classification started', { noteId });
     const modelCall = (userMessage: string) => {
       logger.info('Calling context engine API', { noteId, userMessage });
-      return callContextEngineAPIWithLogging(note, contexts, [], userMessage);
+      return callContextEngineAPIWithLogging(note, contexts, formattedFeedback, userMessage);
     };
-    const result = await classifyContextService(note, contexts, [], modelCall);
+    const result = await classifyContextService(note, contexts, formattedFeedback, modelCall);
     logger.info('Classification service result', { noteId, result });
     if (result.type === 'assign') {
       if (note && NotesRepo && typeof NotesRepo.updateClassification === 'function') {

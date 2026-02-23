@@ -1,122 +1,229 @@
-import { NotificationRepo } from '../db/notification-repo'
-import { logger } from '../utils/logger'
-import { Scheduling } from '../utils/notification-scheduling'
-import { ExpoNotifications } from './notifications'
+import * as Notifications from "expo-notifications";
+import { NotesRepo } from '../db/notes-repo';
+import { NotificationRepo } from '../db/notification-repo';
+import { logger } from '../utils/logger';
+import { Scheduling } from '../utils/notification-scheduling';
+import { ExpoNotifications } from './notifications';
 
-export type Note = {
+export type NoteWithReminders = {
   id: string
   title: string
   body?: string
   category: 'HAVE' | 'URGENT' | 'NICE'
-  contextId?: string | null
-  // HAVE:
-  alarmAt?: number
+  // HAVE/NICE:
+  reminderAt?: number | null
   // URGENT:
-  initialAlarmAt?: number
-  dueDate?: number
-  status?: 'OPEN' | 'DONE' | 'EXPIRED'
+  initialReminderAt?: number | null
+  dueDate?: number | null
+  status?: 'PENDING' | 'DONE' | 'EXPIRED'
 }
+
+Notifications.setNotificationHandler({
+  handleNotification: async () => ({
+    shouldShowAlert: true, // Show alert in foreground
+    shouldShowBanner: true, // Show banner (iOS 17+)
+    shouldShowList: true,   // Show in Notification Center (iOS 17+)
+    shouldPlaySound: true,
+    shouldSetBadge: false,
+  }),
+});
 
 export async function initNotificationSystem() {
   await NotificationRepo.init()
-  logger.info('Notification system initialized')
+  const status = await ExpoNotifications.requestPermissions()
+  logger.info('Notification system initialized', { permissionStatus: status })
+
+  // Add notification listeners
+  Notifications.addNotificationReceivedListener((n) => {
+    logger.info('Notification received', { notification: n })
+  })
+  Notifications.addNotificationResponseReceivedListener((r) => {
+    logger.info('Notification response received', { response: r })
+  })
 }
 
-export async function scheduleForHave(note: Note) {
-  if (!note.alarmAt) return
-  await NotificationRepo.deleteAllForNote(note.id)
-  const timestamps = Scheduling.generateHaveSchedule(note.alarmAt)
-  for (const t of timestamps) {
-    const id = await ExpoNotifications.scheduleNotification({ title: note.title, body: note.body }, { date: t })
-    await NotificationRepo.saveScheduled({ noteId: note.id, notificationId: id, scheduledAt: t, type: 'HAVE' })
-  }
-}
+/**
+ * Schedule single reminder for HAVE/NICE note
+ */
+export async function scheduleSingleReminder(noteId: string, reminderAt: number): Promise<void> {
+  try {
+    // Cancel existing reminders first
+    await cancelAllReminders(noteId)
 
-export async function scheduleForUrgent(note: Note, windowMs: number, isDev = false) {
-  if (!note.initialAlarmAt || !note.dueDate) return
-  await NotificationRepo.deleteAllForNote(note.id)
-  const timestamps = Scheduling.generateUrgentSchedule(note.initialAlarmAt, note.dueDate, windowMs, Date.now(), isDev)
-  for (const t of timestamps) {
-    const id = await ExpoNotifications.scheduleNotification({ title: note.title, body: note.body }, { date: t })
-    await NotificationRepo.saveScheduled({ noteId: note.id, notificationId: id, scheduledAt: t, type: 'URGENT' })
-  }
-}
-
-export async function cancelForNote(noteId: string) {
-  const rows = await NotificationRepo.getScheduledByNote(noteId)
-  for (const r of rows) {
-    await ExpoNotifications.cancelNotification(r.notificationId)
-    await NotificationRepo.deleteByNotificationId(r.notificationId)
-  }
-  logger.info('Cancelled all notifications for note', { noteId })
-}
-
-// Reconcile scheduled notifications with actual note states.
-// getNoteById should return Note | null. This keeps the manager decoupled from app storage.
-export async function reconcile(
-  windowMs: number,
-  getNoteById: (noteId: string) => Promise<Note | null>,
-  getAllNotes?: () => Promise<Note[]>,
-  isDev = false
-) {
-  logger.info('Reconciliation started', { windowMs, isDev })
-  const scheduled = await NotificationRepo.listAllScheduled()
-
-  // First pass: reconcile existing scheduled rows
-  for (const row of scheduled) {
-    const note = await getNoteById(row.noteId)
-
-    // If the notes storage isn't available (note === null), skip reconciliation for this row.
-    if (note === null) {
-      logger.info('Reconciling: note not available in storage; skipping', { noteId: row.noteId })
-      continue
+    const note = await NotesRepo.getById(noteId)
+    if (!note) {
+      logger.error('Cannot schedule: note not found', { noteId })
+      return
     }
 
-    // Note is done or expired -> cancel scheduled
-    if (note.status === 'DONE' || (note.dueDate && note.dueDate <= Date.now())) {
-      logger.info('Reconciling: cancelling schedule because note done/expired', { row, noteStatus: note.status })
-      try {
-        await ExpoNotifications.cancelNotification(row.notificationId)
-        await NotificationRepo.deleteByNotificationId(row.notificationId)
-      } catch (e) {
-        logger.error('Error cancelling during reconcile', { err: e })
+    const timestamps = Scheduling.generateHaveSchedule(reminderAt)
+    for (const t of timestamps) {
+      const id = await ExpoNotifications.scheduleNotification(
+        { title: note.title, body: note.body || 'Reminder' },
+        { date: t }
+      )
+      await NotificationRepo.saveScheduled(noteId, id, t)
+      logger.info('Scheduled single reminder', { noteId, notificationId: id, triggerAt: t })
+    }
+
+    // Log all scheduled notifications for this note
+    const scheduled = await NotificationRepo.getScheduledByNote(noteId)
+    logger.info('All scheduled notifications after scheduling', {
+      noteId,
+      scheduled: scheduled.map(s => ({ notificationId: s.notificationId, triggerAt: s.triggerAt }))
+    })
+  } catch (err) {
+    logger.error('Schedule single reminder failed', { noteId, err })
+    throw err
+  }
+}
+
+/**
+ * Schedule batch of reminders for URGENT note
+ */
+export async function scheduleUrgentBatch(noteId: string, isDev = false): Promise<void> {
+  try {
+    const note = await NotesRepo.getById(noteId)
+    if (!note || !note.initialReminderAt || !note.dueDate) {
+      logger.error('Cannot schedule urgent: missing data', { noteId, note })
+      return
+    }
+
+    // Cancel existing reminders first
+    await cancelAllReminders(noteId)
+    // Use the full interval between initialReminderAt and dueDate
+    const timestamps = Scheduling.generateUrgentSchedule(
+      note.initialReminderAt,
+      note.dueDate,
+      note.dueDate - note.initialReminderAt,
+      Date.now(),
+      isDev
+    )
+
+
+    // Schedule interval reminders
+    for (const t of timestamps) {
+      const id = await ExpoNotifications.scheduleNotification(
+        { title: `⚠️ ${note.title}`, body: note.body || 'Urgent reminder' },
+        { date: t }
+      )
+      await NotificationRepo.saveScheduled(noteId, id, t)
+    }
+
+    // Always schedule a special notification at dueDate
+    if (note.dueDate) {
+      const dueId = await ExpoNotifications.scheduleNotification(
+        {
+          title: `⏰ ${note.title}`,
+          body: 'Hey you have an urgent task and its due date is now',
+        },
+        { date: note.dueDate }
+      )
+      await NotificationRepo.saveScheduled(noteId, dueId, note.dueDate)
+      logger.info('Scheduled dueDate notification', { noteId, dueId, dueDate: note.dueDate })
+    }
+
+    // Log all scheduled notifications for this note
+    const scheduled = await NotificationRepo.getScheduledByNote(noteId)
+    logger.info('All scheduled notifications after scheduling', {
+      noteId,
+      scheduled: scheduled.map(s => ({ notificationId: s.notificationId, triggerAt: s.triggerAt }))
+    })
+
+    logger.info('Scheduled urgent batch', { noteId, count: timestamps.length, isDev })
+  } catch (err) {
+    logger.error('Schedule urgent batch failed', { noteId, err })
+    throw err
+  }
+}
+
+/**
+ * Cancel all reminders for a note
+ */
+export async function cancelAllReminders(noteId: string): Promise<void> {
+  try {
+    const scheduled = await NotificationRepo.getScheduledByNote(noteId)
+    for (const s of scheduled) {
+      await ExpoNotifications.cancelNotification(s.notificationId)
+      await NotificationRepo.deleteByNotificationId(s.notificationId)
+    }
+    logger.info('Cancelled all reminders', { noteId, count: scheduled.length })
+  } catch (err) {
+    logger.error('Cancel all reminders failed', { noteId, err })
+    throw err
+  }
+}
+
+/**
+ * Mark note as DONE and cancel all reminders
+ */
+export async function markNoteDone(noteId: string): Promise<void> {
+  try {
+    // Update note status in DB
+    await NotesRepo.updateStatus(noteId, 'DONE')
+
+    // Cancel all scheduled reminders
+    await cancelAllReminders(noteId)
+
+    logger.info('Marked note done', { noteId })
+  } catch (err) {
+    logger.error('Mark note done failed', { noteId, err })
+    throw err
+  }
+}
+
+/**
+ * Reconcile all URGENT notes - called on app open/resume
+ * Checks for expired notes and reschedules upcoming reminders
+ */
+export async function reconcileUrgentNotes(isDev = false): Promise<void> {
+  try {
+    logger.info('Reconciling URGENT notes', { isDev })
+
+    const allNotes = await NotesRepo.listAll()
+    const urgentNotes = allNotes.filter(n => n.category === 'URGENT')
+
+    for (const note of urgentNotes) {
+      if (!note.dueDate || !note.initialReminderAt) continue
+
+      const now = Date.now()
+
+      // Check if note should be expired
+      if (Scheduling.shouldExpire(note.dueDate, now) && note.status !== 'EXPIRED') {
+        await NotesRepo.updateStatus(note.id, 'EXPIRED')
+        await cancelAllReminders(note.id)
+        logger.info('Note expired during reconciliation', { noteId: note.id })
+        continue
       }
-      continue
-    }
 
-    // If there are no schedules for note in the upcoming window, schedule more.
-    const upcoming = (await NotificationRepo.getScheduledByNote(row.noteId)).filter((r) => r.scheduledAt >= Date.now())
-    if (upcoming.length === 0) {
-      logger.info('Reconciling: scheduling more notifications for note', { noteId: row.noteId })
-      if (note.category === 'HAVE') await scheduleForHave(note)
-      else if (note.category === 'URGENT') await scheduleForUrgent(note, windowMs, isDev)
-    }
-  }
+      // Skip if already done or expired
+      if (note.status === 'DONE' || note.status === 'EXPIRED') {
+        await cancelAllReminders(note.id)
+        continue
+      }
 
-  // Second pass: if getAllNotes provided, check for notes with no schedules and seed schedules
-  if (getAllNotes) {
-    const allNotes = await getAllNotes()
-    for (const note of allNotes) {
-      // skip deleted or done or expired
-      if (!note || note.status === 'DONE' || (note.dueDate && note.dueDate <= Date.now())) continue
+      // Check if we need to schedule more reminders
+      const scheduled = await NotificationRepo.getScheduledByNote(note.id)
+      const upcoming = scheduled.filter(s => s.triggerAt >= now)
 
-      const rowsForNote = await NotificationRepo.getScheduledByNote(note.id)
-      const upcoming = rowsForNote.filter((r) => r.scheduledAt >= Date.now())
       if (upcoming.length === 0) {
-        logger.info('Reconciling: seeding schedules for note', { noteId: note.id })
-        if (note.category === 'HAVE') await scheduleForHave(note)
-        else if (note.category === 'URGENT') await scheduleForUrgent(note, windowMs, isDev)
+        logger.info('Rescheduling urgent note', { noteId: note.id })
+        await scheduleUrgentBatch(note.id, isDev)
       }
     }
-  }
 
-  logger.info('Reconciliation finished')
+    logger.info('Reconciliation complete')
+  } catch (err) {
+    logger.error('Reconciliation failed', { err })
+    throw err
+  }
 }
 
 export const NotificationManager = {
   initNotificationSystem,
-  scheduleForHave,
-  scheduleForUrgent,
-  cancelForNote,
-  reconcile,
+  scheduleSingleReminder,
+  scheduleUrgentBatch,
+  cancelAllReminders,
+  markNoteDone,
+  reconcileUrgentNotes,
 }

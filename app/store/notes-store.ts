@@ -1,5 +1,6 @@
 import { create } from 'zustand'
 import { ContextsRepo } from '../db/contexts-repo'
+import { FeedbackRepo } from '../db/feedback-repo'
 import { NotesRepo } from '../db/notes-repo'
 import { logger } from '../utils/logger'
 
@@ -52,6 +53,7 @@ export const useNotesStore = create<NotesStore>((set, get) => ({
     try {
       await ContextsRepo.init()
       await NotesRepo.init()
+      await FeedbackRepo.init()
       
       const allNotes = await NotesRepo.listAll()
       const allContexts = await ContextsRepo.listContexts()

@@ -1,6 +1,7 @@
 import * as Crypto from 'expo-crypto'
 import { openDatabaseSync } from 'expo-sqlite'
 import { logger } from '../utils/logger'
+import { FeedbackRepo } from './feedback-repo'
 
 const db =  openDatabaseSync('mindpalace.db')
 
@@ -11,6 +12,11 @@ export type Note = {
   category: 'HAVE' | 'URGENT' | 'NICE'
   contextId?: string | null
   classificationStatus?: 'pending' | 'assigned' | 'error'
+  // Reminder fields
+  reminderAt?: number | null           // HAVE/NICE: single reminder
+  initialReminderAt?: number | null    // URGENT: first reminder
+  dueDate?: number | null              // URGENT: deadline
+  status?: 'PENDING' | 'DONE' | 'EXPIRED'
   createdAt: number
   updatedAt: number
 }
@@ -76,6 +82,10 @@ export const NotesRepo = {
         category: row.category,
         contextId: row.contextId ?? null,
         classificationStatus: row.classificationStatus ?? undefined,
+        reminderAt: row.reminderAt ?? null,
+        initialReminderAt: row.initialReminderAt ?? null,
+        dueDate: row.dueDate ?? null,
+        status: row.status ?? 'PENDING',
         createdAt: row.createdAt,
         updatedAt: row.updatedAt,
       }
@@ -94,6 +104,10 @@ export const NotesRepo = {
         category: row.category,
         contextId: row.contextId ?? null,
         classificationStatus: row.classificationStatus ?? undefined,
+        reminderAt: row.reminderAt ?? null,
+        initialReminderAt: row.initialReminderAt ?? null,
+        dueDate: row.dueDate ?? null,
+        status: row.status ?? 'PENDING',
         createdAt: row.createdAt,
         updatedAt: row.updatedAt,
       }))
@@ -105,15 +119,83 @@ export const NotesRepo = {
   async moveNoteToContext(noteId: string, contextId: string): Promise<string | null> {
     try {
       const note = await NotesRepo.getById(noteId)
-      const previousContextId = note?.contextId ?? null
+      if (!note) {
+        logger.error('Cannot move note: note not found', { noteId })
+        return null
+      }
+      
+      const previousContextId = note.contextId ?? null
       await db.runAsync(
         `UPDATE notes SET contextId = ?, updatedAt = ? WHERE id = ?`,
         [contextId, Date.now(), noteId]
       )
-      logger.info('AI_FEEDBACK', { action: 'move', noteId, previousContextId, newContextId: contextId })
+      
+      // Log user feedback - user manually moved the note
+      // If AI had assigned a context and user moves it, that's feedback
+      if (note.classificationStatus === 'assigned' && previousContextId) {
+        await FeedbackRepo.logFeedback(
+          noteId,
+          note.title,
+          previousContextId, // AI suggested this
+          contextId // User chose this instead
+        )
+      }
+      
+      logger.info('Note moved to context', { 
+        noteId, 
+        previousContextId, 
+        newContextId: contextId,
+        feedbackLogged: note.classificationStatus === 'assigned' && previousContextId 
+      })
+      
       return previousContextId
     } catch (err) {
       logger.error('Move note to context failed', { noteId, contextId, err })
+      throw err
+    }
+  },
+  async updateReminder(noteId: string, reminderAt: number | null): Promise<void> {
+    try {
+      await db.runAsync(
+        `UPDATE notes SET reminderAt = ?, updatedAt = ? WHERE id = ?`,
+        [reminderAt, Date.now(), noteId]
+      )
+      logger.info('Note reminder updated', { noteId, reminderAt })
+    } catch (err) {
+      logger.error('Update reminder failed', { noteId, err })
+      throw err
+    }
+  },
+  async updateUrgentReminders(noteId: string, initialReminderAt: number | null, dueDate: number | null): Promise<void> {
+    try {
+      await db.runAsync(
+        `UPDATE notes SET initialReminderAt = ?, dueDate = ?, updatedAt = ? WHERE id = ?`,
+        [initialReminderAt, dueDate, Date.now(), noteId]
+      )
+      logger.info('Urgent reminders updated', { noteId, initialReminderAt, dueDate })
+    } catch (err) {
+      logger.error('Update urgent reminders failed', { noteId, err })
+      throw err
+    }
+  },
+  async updateStatus(noteId: string, status: 'PENDING' | 'DONE' | 'EXPIRED'): Promise<void> {
+    try {
+      await db.runAsync(
+        `UPDATE notes SET status = ?, updatedAt = ? WHERE id = ?`,
+        [status, Date.now(), noteId]
+      )
+      logger.info('Note status updated', { noteId, status })
+    } catch (err) {
+      logger.error('Update status failed', { noteId, err })
+      throw err
+    }
+  },
+  async deleteNote(noteId: string): Promise<void> {
+    try {
+      await db.runAsync(`DELETE FROM notes WHERE id = ?`, [noteId])
+      logger.info('Note deleted', { noteId })
+    } catch (err) {
+      logger.error('Delete note failed', { noteId, err })
       throw err
     }
   },
