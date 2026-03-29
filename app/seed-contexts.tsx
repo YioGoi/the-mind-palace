@@ -2,7 +2,8 @@ import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Stack, useRouter } from 'expo-router';
 import React, { useState } from 'react';
-import { Button, Image, StyleSheet, TextInput, View } from 'react-native';
+import { Button, StyleSheet, TextInput, View } from 'react-native';
+import { useAppTheme } from '@/hooks/use-app-theme';
 import { logger } from './utils/logger';
 // Set a custom screen title for this route
 export const unstable_settings = {
@@ -11,6 +12,7 @@ export const unstable_settings = {
 
 export default function SeedContextsScreen() {
   const router = useRouter()
+  const { colors } = useAppTheme()
   const [a, setA] = useState('')
   const [b, setB] = useState('')
   const [c, setC] = useState('')
@@ -38,12 +40,6 @@ export default function SeedContextsScreen() {
     <>
       <Stack.Screen options={{ title: 'Create Contexts' }} />
       <ThemedView style={styles.container}>
-        <Image
-          source={require('@/assets/images/create-contexts.png')}
-          style={styles.banner}
-          resizeMode="contain"
-          accessibilityLabel="Create Contexts Banner"
-        />
         <ThemedText type="title">Create your first 3 contexts</ThemedText>
         <ThemedText>
           These will act as your first "mental drawers". You can rename or move notes between
@@ -51,9 +47,48 @@ export default function SeedContextsScreen() {
         </ThemedText>
 
         <View style={styles.inputs}>
-          <TextInput value={a} onChangeText={setA} placeholder="Context 1" style={styles.input} />
-          <TextInput value={b} onChangeText={setB} placeholder="Context 2" style={styles.input} />
-          <TextInput value={c} onChangeText={setC} placeholder="Context 3" style={styles.input} />
+          <TextInput
+            value={a}
+            onChangeText={setA}
+            placeholder="Context 1"
+            placeholderTextColor={colors.colorTextMuted}
+            style={[
+              styles.input,
+              {
+                color: colors.colorTextMain,
+                borderColor: colors.colorBorder,
+                backgroundColor: colors.colorBgMuted,
+              },
+            ]}
+          />
+          <TextInput
+            value={b}
+            onChangeText={setB}
+            placeholder="Context 2"
+            placeholderTextColor={colors.colorTextMuted}
+            style={[
+              styles.input,
+              {
+                color: colors.colorTextMain,
+                borderColor: colors.colorBorder,
+                backgroundColor: colors.colorBgMuted,
+              },
+            ]}
+          />
+          <TextInput
+            value={c}
+            onChangeText={setC}
+            placeholder="Context 3"
+            placeholderTextColor={colors.colorTextMuted}
+            style={[
+              styles.input,
+              {
+                color: colors.colorTextMain,
+                borderColor: colors.colorBorder,
+                backgroundColor: colors.colorBgMuted,
+              },
+            ]}
+          />
         </View>
 
         <Button title={loading ? 'Saving...' : 'Continue'} onPress={onContinue} disabled={!allFilled || loading} />

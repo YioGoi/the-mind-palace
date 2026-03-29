@@ -16,12 +16,14 @@ const HEADER_HEIGHT = 250;
 type Props = PropsWithChildren<{
   headerImage: ReactElement;
   headerBackgroundColor: { dark: string; light: string };
+  transparentContent?: boolean;
 }>;
 
 export default function ParallaxScrollView({
   children,
   headerImage,
   headerBackgroundColor,
+  transparentContent = false,
 }: Props) {
   const backgroundColor = useThemeColor({}, 'background');
   const colorScheme = useColorScheme() ?? 'light';
@@ -47,7 +49,8 @@ export default function ParallaxScrollView({
   return (
     <Animated.ScrollView
       ref={scrollRef}
-      style={{ backgroundColor, flex: 1 }}
+      style={{ backgroundColor: transparentContent ? 'transparent' : backgroundColor, flex: 1 }}
+      contentContainerStyle={styles.scrollContent}
       scrollEventThrottle={16}>
       <Animated.View
         style={[
@@ -57,7 +60,13 @@ export default function ParallaxScrollView({
         ]}>
         {headerImage}
       </Animated.View>
-      <ThemedView style={styles.content}>{children}</ThemedView>
+      <ThemedView
+        style={styles.content}
+        lightColor={transparentContent ? 'transparent' : undefined}
+        darkColor={transparentContent ? 'transparent' : undefined}
+      >
+        {children}
+      </ThemedView>
     </Animated.ScrollView>
   );
 }
@@ -66,12 +75,15 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
   },
+  scrollContent: {
+    flexGrow: 1,
+  },
   header: {
     height: HEADER_HEIGHT,
     overflow: 'hidden',
   },
   content: {
-    flex: 1,
+    flexGrow: 1,
     padding: 32,
     gap: 16,
     overflow: 'hidden',

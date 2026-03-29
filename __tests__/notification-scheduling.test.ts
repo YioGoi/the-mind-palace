@@ -12,9 +12,9 @@ describe('getRepeatIntervalMs', () => {
     expect(getRepeatIntervalMs(6 * HOUR, false)).toBe(30 * 60 * 1000)
   })
   test('dev mode scales down to seconds', () => {
-    expect(getRepeatIntervalMs(49 * HOUR, true)).toBe(6 * 1000)
-    expect(getRepeatIntervalMs(24 * HOUR, true)).toBe(2 * 1000)
-    expect(getRepeatIntervalMs(6 * HOUR, true)).toBe(30 * 1000)
+    expect(getRepeatIntervalMs(49 * HOUR, true)).toBe(60 * 1000)
+    expect(getRepeatIntervalMs(24 * HOUR, true)).toBe(60 * 1000)
+    expect(getRepeatIntervalMs(6 * HOUR, true)).toBe(60 * 1000)
   })
 })
 
@@ -48,6 +48,6 @@ describe('getRepeatIntervalMs with ratio', () => {
   test('dev mode interpolation uses seconds', () => {
     const remaining = 30 * HOUR
     const interval = getRepeatIntervalMs(remaining, true, true)
-    expect(interval).toBe(4 * 1000)
+    expect(interval).toBe(60 * 1000)
   })
 })

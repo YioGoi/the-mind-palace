@@ -5,7 +5,7 @@ import Fab from '@/components/ui/fab'
 import { IconSymbol } from '@/components/ui/icon-symbol'
 import QuickActionSheet from '@/components/ui/quick-action-sheet'
 import { Palette } from '@/constants/palette'
-import { Image } from 'expo-image'
+import { useAppTheme } from '@/hooks/use-app-theme'
 import React, { useEffect, useRef, useState } from 'react'
 import { ActivityIndicator, Alert, SectionList, StyleSheet, Text, TouchableOpacity, View } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
@@ -16,6 +16,7 @@ import { useNotesStore } from '../store/notes-store'
 import { logger } from '../utils/logger'
 
 export default function NiceScreen() {
+  const { colors } = useAppTheme()
   const CATEGORY = 'NICE'
 
   // Use Zustand store - subscribe to arrays directly (Zustand handles re-renders)
@@ -211,17 +212,13 @@ export default function NiceScreen() {
 
 
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView style={[styles.container, { backgroundColor: 'transparent' }]}>
       {loading ? (
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color={Palette.colorAccent} />
         </View>
       ) : (
         <>
-          <View style={styles.bannerWrapper}>
-            <Image source={require('@/assets/images/nice-banner.png')} style={styles.banner} contentFit="contain" accessibilityLabel="Nice banner" />
-          </View>
-
           <SectionList
             sections={displaySections}
             stickySectionHeadersEnabled={false}
@@ -259,26 +256,26 @@ export default function NiceScreen() {
               const hasPending = section.data.some((n: any) => n.classificationStatus === 'pending')
               return (
                 <TouchableOpacity
-                  style={styles.sectionHeader}
+                  style={[styles.sectionHeader, { backgroundColor: colors.colorBgMuted, borderBottomColor: colors.colorBorder }]}
                   onPress={() => toggleSection(section.id)}
                   activeOpacity={0.7}
                   testID={`section-header-${section.id}`}
                 >
-                  <Text style={styles.sectionTitle}>
+                  <Text style={[styles.sectionTitle, { color: colors.colorAccent }]}>
                     {section.title}
                     {hasPending ? (
                       <View style={{ marginLeft: 8, transform: [{ translateY: 2 }] }}>
                         <ActivityIndicator size="small" color={Palette.colorAccent} />
                       </View>
                     ) : sectionCounts[section.id] ? (
-                      <Text style={styles.sectionCount}> ({sectionCounts[section.id]})</Text>
+                      <Text style={[styles.sectionCount, { color: colors.colorAccent }]}> ({sectionCounts[section.id]})</Text>
                     ) : null}
                   </Text>
                   <IconSymbol name="chevron.right" size={22} color={Palette.colorAccent} style={{ transform: [{ rotate: collapsedSections[section.id] ? '0deg' : '90deg' }] }} />
                 </TouchableOpacity>
               )
             }}
-            ListEmptyComponent={<Text style={{ padding: 12 }}>No notes</Text>}
+            ListEmptyComponent={<Text style={{ padding: 12, color: colors.colorTextMuted }}>No notes</Text>}
           />
           <QuickActionSheet
             visible={sheetVisible}
@@ -306,13 +303,11 @@ export default function NiceScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1 },
+  container: { flex: 1, marginTop: 50 },
   loadingContainer: { flex: 1, alignItems: 'center', justifyContent: 'center' },
-  bannerWrapper: { marginHorizontal: 0, marginBottom: 8, borderRadius: 12, overflow: 'hidden', height: 140, backgroundColor: '#E8F0FF', alignItems: 'center', justifyContent: 'center' },
-  banner: { width: '100%', height: '100%' },
   sectionList: { flex: 1 },
-  sectionHeader: { padding: 12, backgroundColor: Palette.colorAccentSoft, borderBottomWidth: 1, borderBottomColor: Palette.colorBorder, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  sectionTitle: { fontSize: 16, fontWeight: '700', color: Palette.colorAccent },
-  sectionCount: { fontSize: 14, color: Palette.colorAccent, opacity: 0.8 },
+  sectionHeader: { padding: 12, borderBottomWidth: 1, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  sectionTitle: { fontSize: 16, fontWeight: '700' },
+  sectionCount: { fontSize: 14, opacity: 0.8 },
   sectionIndicator: { fontSize: 16, color: Palette.colorAccent },
 })

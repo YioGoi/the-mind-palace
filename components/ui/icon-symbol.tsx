@@ -1,9 +1,8 @@
-// Fallback for using MaterialIcons on Android and web.
-
+// Use SF Symbols on iOS, fallback to MaterialIcons on Android/web.
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
-import { SymbolViewProps, SymbolWeight } from 'expo-symbols';
+import { SymbolView, SymbolViewProps, SymbolWeight } from 'expo-symbols';
 import { ComponentProps } from 'react';
-import { OpaqueColorValue, type StyleProp, type TextStyle } from 'react-native';
+import { OpaqueColorValue, Platform, type StyleProp, type ViewStyle } from 'react-native';
 
 type IconMapping = Record<SymbolViewProps['name'], ComponentProps<typeof MaterialIcons>['name']>;
 type IconSymbolName = keyof typeof MAPPING;
@@ -15,10 +14,15 @@ type IconSymbolName = keyof typeof MAPPING;
  */
 const MAPPING = {
   'house.fill': 'home',
+  'apple.homekit': 'home',
   'paperplane.fill': 'send',
   'chevron.left.forwardslash.chevron.right': 'code',
   'chevron.right': 'chevron-right',
   'gearshape.fill': 'settings',
+  'figure.walk.motion': 'directions-walk',
+  'list.bullet': 'list',
+  'lightbulb.max': 'lightbulb-outline',
+  'slider.horizontal.3': 'tune',
 } as IconMapping;
 
 /**
@@ -31,12 +35,17 @@ export function IconSymbol({
   size = 24,
   color,
   style,
+  weight = 'regular',
 }: {
   name: IconSymbolName;
   size?: number;
   color: string | OpaqueColorValue;
-  style?: StyleProp<TextStyle>;
+  style?: StyleProp<ViewStyle>;
   weight?: SymbolWeight;
 }) {
-  return <MaterialIcons color={color} size={size} name={MAPPING[name]} style={style} />;
+  if (Platform.OS === 'ios') {
+    return <SymbolView name={name} tintColor={color} size={size} weight={weight} style={style} />;
+  }
+
+  return <MaterialIcons color={color} size={size} name={MAPPING[name]} style={style as any} />;
 }

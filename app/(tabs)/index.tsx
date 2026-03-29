@@ -1,39 +1,38 @@
 import { Image } from 'expo-image';
 import { Alert, StyleSheet, TouchableOpacity } from 'react-native';
 
-import { HelloWave } from '@/components/hello-wave';
 import ParallaxScrollView from '@/components/parallax-scroll-view';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 
 import { Palette } from '@/constants/palette';
-import * as FileSystem from 'expo-file-system/legacy';
 import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { isPremiumPlan } from '../../services/ai/config';
+import { resetAppDatabase } from '../db/database';
 
 export default function HomeScreen() {
   const router = useRouter();
+  const premiumEnabled = isPremiumPlan()
 
   async function handleResetDb() {
     try {
-      // Use documentDirectory if available, otherwise fallback to cacheDirectory
-      const dbDir = (FileSystem as any).documentDirectory || (FileSystem as any).cacheDirectory;
-      const dbPath = `${dbDir}SQLite/mindpalace.db`;
-      await (FileSystem as any).deleteAsync(dbPath, { idempotent: true });
-      Alert.alert('Database deleted', 'Restarting app...', [
+      await resetAppDatabase()
+      Alert.alert('App data reset', 'All local data has been cleared. Opening seed screen...', [
         {
           text: 'OK',
-          onPress: () => router.replace('/'),
+          onPress: () => router.replace('/seed-contexts'),
         },
       ]);
     } catch (e: any) {
-      Alert.alert('Error', 'Failed to delete DB: ' + (e && e.message ? e.message : String(e)));
+      Alert.alert('Error', 'Failed to reset app data: ' + (e && e.message ? e.message : String(e)));
     }
   }
 
   return (
-    <SafeAreaView style={{ flex: 1 }}>
+    <SafeAreaView style={{ flex: 1, backgroundColor: 'transparent' }}>
       <ParallaxScrollView
+        transparentContent
         headerBackgroundColor={{ light: '#A1CEDC', dark: '#1D3D47' }}
         headerImage={
           <Image
@@ -41,15 +40,17 @@ export default function HomeScreen() {
             style={styles.reactLogo}
           />
         }>
-        <ThemedView style={styles.greetingContainer}>
-          <ThemedText type="subtitle">Welcome to</ThemedText>
-          <ThemedText type="title">Mind Palace</ThemedText>
-          <HelloWave />
+        <ThemedView
+          style={styles.greetingContainer}
+          lightColor="transparent"
+          darkColor="transparent"
+        >
           <ThemedText>
-            A simple, iOS-first personal organizer. Notes live in three categories: Urgent, Have, and Nice. Create a note and let AI suggest a context for it.
+            A simple, iOS-first personal organizer. Notes live in three categories: Urgent, Have, and Nice.
+            {premiumEnabled && ` Create a note and let AI suggest a context for it.`}
           </ThemedText>
 
-          <ThemedView style={styles.ctaRow}>
+          <ThemedView style={styles.ctaRow} lightColor="transparent" darkColor="transparent">
             <TouchableOpacity
               activeOpacity={0.85}
               style={[styles.ctaBtn, { backgroundColor: Palette.colorDanger }]}

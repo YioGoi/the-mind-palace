@@ -15,7 +15,7 @@ An iOS-first personal cognitive organizer that helps you manage your thoughts, t
 - **Frontend**: React Native + Expo
 - **State Management**: Zustand
 - **Database**: SQLite (expo-sqlite)
-- **AI**: OpenRouter API (via proxy server)
+- **AI**: OpenAI API (via local proxy server)
 - **Tests**: Jest with comprehensive coverage
 
 ## Get started
@@ -32,14 +32,14 @@ cd openrouter-proxy && npm install && cd ..
 **Main App:**
 ```bash
 cp .env.example .env
-# Edit .env and set EXPO_PUBLIC_CONTEXT_ENGINE_URL
+# Edit .env and set EXPO_PUBLIC_AI_GATEWAY_URL and EXPO_PUBLIC_AI_PLAN
 ```
 
 **OpenRouter Proxy:**
 ```bash
 cd openrouter-proxy
 cp .env.example .env
-# Edit .env and add your OPENROUTER_API_KEY from https://openrouter.ai/keys
+# Edit .env and add your OPENAI_API_KEY from https://platform.openai.com/api-keys
 ```
 
 ### 3. Start the proxy server

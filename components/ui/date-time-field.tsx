@@ -1,4 +1,4 @@
-import { Palette } from '@/constants/palette'
+import { useAppTheme } from '@/hooks/use-app-theme'
 import DateTimePicker, { DateTimePickerEvent } from '@react-native-community/datetimepicker'
 import React, { useState } from 'react'
 import { Keyboard, Modal, Platform, StyleSheet, Text, TouchableOpacity, View } from 'react-native'
@@ -24,6 +24,7 @@ export const DateTimeField: React.FC<DateTimeFieldProps> = ({
   disabled = false,
   testID,
 }) => {
+  const { colors, isDark } = useAppTheme()
   const [show, setShow] = useState(false)
   const [tempDate, setTempDate] = useState<Date>(value || new Date())
 
@@ -61,14 +62,21 @@ export const DateTimeField: React.FC<DateTimeFieldProps> = ({
 
   return (
     <View style={styles.fieldContainer}>
-      <Text style={styles.label}>{label}</Text>
+      <Text style={[styles.label, { color: colors.colorTextSecondary }]}>{label}</Text>
       <TouchableOpacity
-        style={[styles.valueButton, disabled && styles.disabled]}
+        style={[
+          styles.valueButton,
+          {
+            backgroundColor: colors.colorBgElevated,
+            borderColor: colors.colorBorder,
+          },
+          disabled && styles.disabled,
+        ]}
         onPress={openPicker}
         disabled={disabled}
         testID={testID}
       >
-        <Text style={styles.valueText}>{formatted}</Text>
+        <Text style={[styles.valueText, { color: colors.colorTextMain }]}>{formatted}</Text>
       </TouchableOpacity>
       {show && Platform.OS === 'ios' && (
         <Modal
@@ -78,7 +86,7 @@ export const DateTimeField: React.FC<DateTimeFieldProps> = ({
           onRequestClose={closePicker}
         >
           <TouchableOpacity style={styles.modalBackdrop} activeOpacity={1} onPress={closePicker} />
-          <View style={styles.modalContent}>
+          <View style={[styles.modalContent, { backgroundColor: colors.colorBgElevated }]}>
             <DateTimePicker
               value={tempDate}
               mode={mode}
@@ -86,13 +94,15 @@ export const DateTimeField: React.FC<DateTimeFieldProps> = ({
               onChange={(_e, d) => d && setTempDate(d)}
               minimumDate={minimumDate}
               maximumDate={maximumDate}
-              style={{ backgroundColor: 'white' }}
+              style={{ backgroundColor: colors.colorBgElevated }}
+              textColor={colors.colorTextMain}
+              themeVariant={isDark ? 'dark' : 'light'}
             />
             <View style={styles.modalActions}>
-              <TouchableOpacity style={styles.cancelButton} onPress={handleCancel}>
-                <Text style={styles.cancelText}>Cancel</Text>
+              <TouchableOpacity style={[styles.cancelButton, { backgroundColor: colors.colorBgMuted }]} onPress={handleCancel}>
+                <Text style={[styles.cancelText, { color: colors.colorTextSecondary }]}>Cancel</Text>
               </TouchableOpacity>
-              <TouchableOpacity style={styles.confirmButton} onPress={handleConfirm}>
+              <TouchableOpacity style={[styles.confirmButton, { backgroundColor: colors.colorPrimary }]} onPress={handleConfirm}>
                 <Text style={styles.confirmText}>Confirm</Text>
               </TouchableOpacity>
             </View>
@@ -119,21 +129,17 @@ const styles = StyleSheet.create({
   },
   label: {
     fontSize: 14,
-    color: Palette.colorTextSecondary,
     marginBottom: 4,
     fontWeight: '600',
   },
   valueButton: {
-    backgroundColor: Palette.colorBgElevated,
     borderRadius: 10,
     paddingVertical: 14,
     paddingHorizontal: 16,
     borderWidth: 1,
-    borderColor: Palette.colorBorder,
   },
   valueText: {
     fontSize: 16,
-    color: Palette.colorTextMain,
   },
   disabled: {
     opacity: 0.5,
@@ -147,7 +153,6 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     bottom: 0,
-    backgroundColor: 'white',
     borderTopLeftRadius: 16,
     borderTopRightRadius: 16,
     padding: 16,
@@ -167,10 +172,8 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     paddingHorizontal: 18,
     borderRadius: 8,
-    backgroundColor: Palette.colorBgElevated,
   },
   cancelText: {
-    color: Palette.colorTextSecondary,
     fontWeight: '600',
     fontSize: 16,
   },
@@ -178,7 +181,6 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     paddingHorizontal: 18,
     borderRadius: 8,
-    backgroundColor: Palette.colorPrimary,
   },
   confirmText: {
     color: '#fff',

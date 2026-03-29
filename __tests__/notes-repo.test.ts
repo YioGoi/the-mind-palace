@@ -14,7 +14,7 @@ describe('NotesRepo basic', () => {
     
     expect(note.id).toBeTruthy()
     expect(note.title).toBe('Test note')
-    expect(note.classificationStatus).toBe('pending')
+    expect(note.classificationStatus).toBe('manual')
     
     const got = await NotesRepo.getById(note.id)
     expect(got).not.toBeNull()
@@ -26,6 +26,7 @@ describe('NotesRepo basic', () => {
     const note = await NotesRepo.insert({
       title: 'Another note',
       category: 'URGENT',
+      classificationStatus: 'pending',
     })
     
     await NotesRepo.updateClassification(note.id, 'context-123', 'assigned')

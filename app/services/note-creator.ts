@@ -1,30 +1,60 @@
 import { classifyNoteAsync } from '../../services/classification-pipeline';
+import { isPremiumPlan } from '../../services/ai/config';
 import { ContextsRepo } from '../db/contexts-repo';
 import { NotesRepo } from '../db/notes-repo';
 import { useNotesStore } from '../store/notes-store';
 import { logger } from '../utils/logger';
 
-export async function createNote({ title, body, category }: { title: string; body?: string; category: 'HAVE' | 'URGENT' | 'NICE' }) {
+type CreateNoteParams = {
+  title: string
+  body?: string
+  category: 'HAVE' | 'URGENT' | 'NICE'
+  contextId?: string | null
+  autoClassify?: boolean
+  source?: 'manual' | 'ai'
+}
+
+export async function createNote({
+  title,
+  body,
+  category,
+  contextId = null,
+  autoClassify,
+  source = 'manual',
+}: CreateNoteParams) {
   await ContextsRepo.init()
   await NotesRepo.init()
-  
-  // Create note with pending classification status (no contextId assigned yet)
-  const note = await NotesRepo.insert({ 
-    title: title.trim(), 
-    body: body?.trim() || undefined, 
+
+  const shouldAutoClassify = autoClassify ?? false
+  const shouldAssignImmediately = Boolean(contextId)
+  const classificationStatus = shouldAssignImmediately
+    ? 'assigned'
+    : shouldAutoClassify
+    ? 'pending'
+    : 'manual'
+
+  const note = await NotesRepo.insert({
+    title: title.trim(),
+    body: body?.trim() || undefined,
     category,
-    contextId: null, // Will be assigned by AI
+    contextId,
+    classificationStatus,
   })
-  
-  logger.info('NOTE_CREATED', { noteId: note.id, title: note.title, status: 'pending' })
-  
-  // Add to Zustand store immediately for instant UI update
-  useNotesStore.getState().addNote(note);
-  
-  // Fire-and-forget: AI classification happens in background
-  classifyNoteAsync(note.id).catch(err => {
-    logger.error('Classification failed (async)', { noteId: note.id, err })
+
+  logger.info('NOTE_CREATED', {
+    noteId: note.id,
+    title: note.title,
+    status: classificationStatus,
+    source,
   })
-  
+
+  useNotesStore.getState().addNote(note)
+
+  if (shouldAutoClassify && isPremiumPlan()) {
+    classifyNoteAsync(note.id).catch(err => {
+      logger.error('Classification failed (async)', { noteId: note.id, err })
+    })
+  }
+
   return note
 }

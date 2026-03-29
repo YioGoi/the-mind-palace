@@ -4,6 +4,7 @@ import { logger } from '@/app/utils/logger'
 import { DateTimeField } from '@/components/ui/date-time-field'
 import { IconSymbol } from '@/components/ui/icon-symbol'
 import { Palette } from '@/constants/palette'
+import { useAppTheme } from '@/hooks/use-app-theme'
 import React, { useEffect, useState } from 'react'
 import {
   Alert,
@@ -14,7 +15,7 @@ import {
   TouchableOpacity,
   View
 } from 'react-native'
-import { SafeAreaView } from 'react-native-safe-area-context'
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 
 type Props = {
   visible: boolean
@@ -24,6 +25,8 @@ type Props = {
 }
 
 export default function NoteDetailModal({ visible, noteId, onClose, onUpdate }: Props) {
+  const insets = useSafeAreaInsets()
+  const { colors } = useAppTheme()
   const [note, setNote] = useState<Note | null>(null)
   const [loading, setLoading] = useState(false)
   
@@ -165,12 +168,12 @@ export default function NoteDetailModal({ visible, noteId, onClose, onUpdate }: 
 
   return (
     <Modal visible={visible} animationType="slide" presentationStyle="fullScreen">
-      <SafeAreaView style={styles.container}>
+      <SafeAreaView style={[styles.container, { backgroundColor: colors.colorBgMain }]} edges={['left', 'right', 'bottom']}>
         {/* Header */}
-        <View style={styles.header}>
+        <View style={[styles.header, { paddingTop: insets.top + 12, borderBottomColor: colors.colorBorder, backgroundColor: colors.colorBgElevated }]}>
           <TouchableOpacity onPress={onClose} style={styles.backButton}>
-            <IconSymbol name="chevron.left" size={24} color={Palette.colorPrimary} />
-            <Text style={styles.backText}>Back</Text>
+            <IconSymbol name="chevron.left" size={24} color={colors.colorPrimary} />
+            <Text style={[styles.backText, { color: colors.colorPrimary }]}>Back</Text>
           </TouchableOpacity>
           
           {isUrgent && (
@@ -180,28 +183,28 @@ export default function NoteDetailModal({ visible, noteId, onClose, onUpdate }: 
           )}
         </View>
 
-        <ScrollView style={styles.content}>
+        <ScrollView style={[styles.content, { backgroundColor: colors.colorBgMain }]}>
           {/* Note Info */}
           <View style={styles.section}>
-            <Text style={styles.label}>Category</Text>
-            <Text style={styles.categoryBadge}>{note.category}</Text>
+            <Text style={[styles.label, { color: colors.colorTextMuted }]}>Category</Text>
+            <Text style={[styles.categoryBadge, { color: colors.colorPrimary, backgroundColor: colors.colorBgMuted }]}>{note.category}</Text>
           </View>
 
           <View style={styles.section}>
-            <Text style={styles.label}>Title</Text>
-            <Text style={styles.title}>{note.title}</Text>
+            <Text style={[styles.label, { color: colors.colorTextMuted }]}>Title</Text>
+            <Text style={[styles.title, { color: colors.colorTextMain }]}>{note.title}</Text>
           </View>
 
           {note.body && (
             <View style={styles.section}>
-              <Text style={styles.label}>Body</Text>
-              <Text style={styles.body}>{note.body}</Text>
+              <Text style={[styles.label, { color: colors.colorTextMuted }]}>Body</Text>
+              <Text style={[styles.body, { color: colors.colorTextSecondary }]}>{note.body}</Text>
             </View>
           )}
 
           {/* Reminder Section */}
           <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Reminders</Text>
+            <Text style={[styles.sectionTitle, { color: colors.colorTextMain }]}>Reminders</Text>
             {isUrgent ? (
               <>
                 <DateTimeField
@@ -244,7 +247,7 @@ export default function NoteDetailModal({ visible, noteId, onClose, onUpdate }: 
           {/* Status */}
           {note.status && note.status !== 'PENDING' && (
             <View style={styles.section}>
-              <Text style={styles.label}>Status</Text>
+              <Text style={[styles.label, { color: colors.colorTextMuted }]}>Status</Text>
               <Text style={[styles.statusBadge, note.status === 'DONE' ? styles.statusDone : styles.statusExpired]}>
                 {note.status}
               </Text>
@@ -268,7 +271,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: 16,
-    paddingVertical: 12,
+    paddingBottom: 12,
     borderBottomWidth: 1,
     borderBottomColor: Palette.colorBorder,
   },

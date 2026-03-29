@@ -15,6 +15,12 @@ RULES:
 - Context names should be specific and descriptive (e.g., "Real Estate", "Financial Deadlines", "Car Maintenance").
 - Avoid generic contexts - be specific about what the context represents.
 
+USER FEEDBACK LEARNING:
+- If feedback shows 'correct' for a contextId, that means the user agreed with assigning similar notes to that context.
+- If feedback shows 'incorrect', learn from the user's correction - they moved the note to a different context.
+- Use feedback to understand the user's mental model and preferences.
+- Prioritize contexts that have received 'correct' feedback when they match the note's theme.
+
 EXAMPLES:
 - "House selling" note → if "Real Estate" context exists, assign to it. If not, propose "Real Estate" or "Property Sales".
 - "Pay iPhone bill" note → if "Bills & Payments" exists, assign. If not, propose "Bills & Payments" or "Monthly Expenses".

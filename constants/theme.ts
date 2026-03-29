@@ -4,37 +4,37 @@
  */
 
 import { Platform } from 'react-native';
-import { Palette } from './palette';
+import { AppPalette } from './palette';
 
-const tintColorLight = '#0a7ea4';
-const tintColorDark = '#fff';
+const tintColorLight = AppPalette.light.colorPrimary;
+const tintColorDark = AppPalette.dark.colorPrimary;
 
 export const Colors = {
   light: {
-    text: '#11181C',
-    background: Palette.colorBgMain,
+    text: AppPalette.light.colorTextMain,
+    background: AppPalette.light.colorBgMain,
     tint: tintColorLight,
-    icon: '#687076',
-    tabIconDefault: '#687076',
+    icon: AppPalette.light.colorTextMuted,
+    tabIconDefault: AppPalette.light.colorTextMuted,
     tabIconSelected: tintColorLight,
-    primary: Palette.colorPrimary,
-    primarySoft: Palette.colorPrimarySoft,
-    bgElevated: Palette.colorBgElevated,
-    accent: Palette.colorAccent,
-    border: Palette.colorBorder,
+    primary: AppPalette.light.colorPrimary,
+    primarySoft: AppPalette.light.colorPrimarySoft,
+    bgElevated: AppPalette.light.colorBgElevated,
+    accent: AppPalette.light.colorAccent,
+    border: AppPalette.light.colorBorder,
   },
   dark: {
-    text: '#ECEDEE',
-    background: '#151718',
+    text: AppPalette.dark.colorTextMain,
+    background: AppPalette.dark.colorBgMain,
     tint: tintColorDark,
-    icon: '#9BA1A6',
-    tabIconDefault: '#9BA1A6',
+    icon: AppPalette.dark.colorTextMuted,
+    tabIconDefault: AppPalette.dark.colorTextMuted,
     tabIconSelected: tintColorDark,
-    primary: Palette.colorPrimary,
-    primarySoft: Palette.colorAccentSoft,
-    bgElevated: '#1a1a1a',
-    accent: Palette.colorAccent,
-    border: '#111216',
+    primary: AppPalette.dark.colorPrimary,
+    primarySoft: AppPalette.dark.colorPrimarySoft,
+    bgElevated: AppPalette.dark.colorBgElevated,
+    accent: AppPalette.dark.colorAccent,
+    border: AppPalette.dark.colorBorder,
   },
 };
 
@@ -62,3 +62,11 @@ export const Fonts = Platform.select({
     mono: "SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace",
   },
 });
+
+export const AppFontFamilies = {
+  regular: 'Manrope_400Regular',
+  medium: 'Manrope_500Medium',
+  semiBold: 'Manrope_600SemiBold',
+  bold: 'Manrope_700Bold',
+  extraBold: 'Manrope_800ExtraBold',
+} as const;

@@ -1,32 +1,54 @@
-// Central color palette for My Mind Palace
-export const Palette = {
-  // Primary identity
-  colorPrimary: '#4C7CF3',
-  colorPrimarySoft: '#E8F0FF',
+export const AppPalette = {
+  light: {
+    colorPrimary: '#111111',
+    colorPrimarySoft: '#F3F3F3',
+    colorBgMain: '#FFFFFF',
+    colorBgElevated: '#FFFFFF',
+    colorBgMuted: '#F7F7F7',
+    colorTextMain: '#050505',
+    colorTextSecondary: '#444444',
+    colorTextMuted: '#787878',
+    colorSuccess: '#3d9e68',
+    colorWarning: '#A16207',
+    colorDanger: '#c65a52',
+    colorAccent: '#181818',
+    colorAccentSoft: '#F3F3F3',
+    colorLink: '#111111',
+    colorFocus: '#D9D9D9',
+    colorBorder: '#E8E8E8',
+    colorDivider: '#F1F1F1',
+    colorOverlay: 'rgba(0, 0, 0, 0.08)',
+    colorAmbientNode: 'rgba(24, 24, 24, 0.18)',
+    colorAmbientLine: 'rgba(24, 24, 24, 0.1)',
+    colorAmbientGlow: 'rgba(24, 24, 24, 0.04)',
+    ambientIdleSpeed: 1,
+    ambientMotionMultiplier: 4.5,
+  },
+  dark: {
+    colorPrimary: '#FFFFFF',
+    colorPrimarySoft: '#111111',
+    colorBgMain: '#000000',
+    colorBgElevated: '#000000',
+    colorBgMuted: '#0B0B0B',
+    colorTextMain: '#FFFFFF',
+    colorTextSecondary: '#D0D0D0',
+    colorTextMuted: '#8E8E8E',
+    colorSuccess: '#3d9e68',
+    colorWarning: '#FACC15',
+    colorDanger: '#c65a52',
+    colorAccent: '#FFFFFF',
+    colorAccentSoft: '#111111',
+    colorLink: '#FFFFFF',
+    colorFocus: '#333333',
+    colorBorder: '#1A1A1A',
+    colorDivider: '#111111',
+    colorOverlay: 'rgba(255, 255, 255, 0.08)',
+    colorAmbientNode: 'rgba(255, 255, 255, 0.22)',
+    colorAmbientLine: 'rgba(255, 255, 255, 0.1)',
+    colorAmbientGlow: 'rgba(255, 255, 255, 0.05)',
+    ambientIdleSpeed: 1,
+    ambientMotionMultiplier: 4.5,
+  },
+} as const
 
-  // Backgrounds
-  colorBgMain: '#F7F9FF',
-  colorBgElevated: '#FFFFFF',
-
-  // Text
-  colorTextMain: '#1C2340',
-  colorTextSecondary: '#5C6485',
-  colorTextMuted: '#8E95B2',
-
-  // Functional
-  colorSuccess: '#3DBE8B',
-  colorWarning: '#F4B740',
-  colorDanger: '#E45C5C',
-
-  // Accent
-  colorAccent: '#7A6CF0',
-  colorAccentSoft: '#F1EFFF',
-
-  // Interactive
-  colorLink: '#5A6FF0',
-  colorFocus: '#9AA8FF',
-
-  // Borders
-  colorBorder: '#E3E7F5',
-  colorDivider: '#EEF1FA',
-}
+export const Palette = AppPalette.light

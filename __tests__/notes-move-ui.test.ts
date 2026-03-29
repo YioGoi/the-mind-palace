@@ -25,7 +25,7 @@ describe('Notes move UI-level test', () => {
     expect(previous).toBeNull()
 
     const calls = spy.mock.calls.map((c) => String(c[0])).join('\n')
-    expect(calls).toMatch(/"action"\s*:\s*"move"/)
+    expect(calls).toMatch(/"message"\s*:\s*"Note moved to context"/)
     expect(calls).toMatch(new RegExp(`"newContextId"\\s*:\\s*"${target.id}"`))
 
     spy.mockRestore()

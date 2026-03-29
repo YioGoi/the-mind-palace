@@ -2,7 +2,6 @@
 import { ContextEngineError, ContextEngineResult } from './types'
 
 export function parseContextEngineOutput(raw: string): ContextEngineResult {
-  console.log('[Parser] Raw input:', raw)
   let obj: any
   try {
     obj = JSON.parse(raw)

@@ -1,4 +1,4 @@
-import { Palette } from '@/constants/palette'
+import { useAppTheme } from '@/hooks/use-app-theme'
 import React from 'react'
 import { Pressable, StyleSheet, Text, TouchableOpacity, View } from 'react-native'
 import Swipeable from 'react-native-gesture-handler/ReanimatedSwipeable'
@@ -20,6 +20,7 @@ type Props = {
 }
 
 export const NoteCard: React.FC<Props> = ({ id, title, subtitle, reminderAt, onLongPress, onPress, swipeActions }) => {
+  const { colors, isDark } = useAppTheme()
   // Format reminder date as 'Feb 12 - 13:00'
   const formatReminder = (timestamp?: number): string | undefined => {
     if (!timestamp) return undefined;
@@ -48,13 +49,17 @@ export const NoteCard: React.FC<Props> = ({ id, title, subtitle, reminderAt, onL
 
   const cardContent = (
     <Pressable style={styles.wrapper} onLongPress={onLongPress} onPress={onPress} testID={`note-card-${id}`}>
-      <View style={styles.container}>
-        <Text style={styles.title}>{title}</Text>
+      <View style={[styles.container, {
+        backgroundColor: colors.colorBgElevated,
+        borderColor: colors.colorBorder,
+        shadowOpacity: isDark ? 0 : 0.04,
+      }]}>
+        <Text style={[styles.title, { color: colors.colorTextMain }]}>{title}</Text>
         {reminderAt && (
-          <Text style={styles.subtitle}>{formatReminder(reminderAt)}</Text>
+          <Text style={[styles.subtitle, { color: colors.colorTextMuted }]}>{formatReminder(reminderAt)}</Text>
         )}
         {!reminderAt && subtitle && (
-          <Text style={styles.subtitle}>{subtitle}</Text>
+          <Text style={[styles.subtitle, { color: colors.colorTextMuted }]}>{subtitle}</Text>
         )}
       </View>
     </Pressable>
@@ -77,13 +82,10 @@ const styles = StyleSheet.create({
     paddingVertical: 6,
   },
   container: {
-    backgroundColor: Palette.colorBgElevated,
     borderRadius: 10,
     padding: 12,
     borderWidth: 1,
-    borderColor: Palette.colorBorder,
     shadowColor: '#000',
-    shadowOpacity: 0.04,
     shadowRadius: 6,
     shadowOffset: { width: 0, height: 2 },
     elevation: 1,
@@ -91,12 +93,10 @@ const styles = StyleSheet.create({
   title: {
     fontSize: 16,
     fontWeight: '600',
-    color: Palette.colorTextMain,
   },
   subtitle: {
     marginTop: 6,
     fontSize: 12,
-    color: Palette.colorTextMuted,
   },
   swipeActionsContainer: {
     flexDirection: 'row',

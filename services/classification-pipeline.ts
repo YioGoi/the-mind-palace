@@ -122,3 +122,30 @@ export async function classifyNoteAsync(noteId: string) {
     return { error: errorMsg };
   }
 }
+
+/**
+ * Re-queue any notes that are stuck in 'pending' classification status.
+ * Called on cold start and app resume to recover from interrupted classifications.
+ */
+export async function reclassifyPendingNotes(): Promise<void> {
+  try {
+    await NotesRepo.init()
+    const allNotes = await NotesRepo.listAll()
+    const pending = allNotes.filter(n => n.classificationStatus === 'pending')
+
+    if (pending.length === 0) return
+
+    logger.info('Reclassifying pending notes on startup', { count: pending.length })
+
+    // Stagger calls 1500ms apart to avoid a retry storm hitting rate limits simultaneously
+    for (let i = 0; i < pending.length; i++) {
+      const note = pending[i]
+      if (i > 0) await new Promise(r => setTimeout(r, 1500))
+      classifyNoteAsync(note.id).catch(err =>
+        logger.error('Reclassify failed for pending note', { noteId: note.id, err })
+      )
+    }
+  } catch (e) {
+    logger.error('reclassifyPendingNotes failed', { err: e })
+  }
+}

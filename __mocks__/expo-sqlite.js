@@ -8,6 +8,14 @@ function openDatabaseSync(name) {
   return dbs[name]
 }
 
+async function backupDatabaseAsync({ sourceDatabase, destDatabase }) {
+  if (sourceDatabase && destDatabase && sourceDatabase.__tables && destDatabase.__tables) {
+    const clone = JSON.parse(JSON.stringify(sourceDatabase.__tables))
+    Object.keys(destDatabase.__tables).forEach((key) => delete destDatabase.__tables[key])
+    Object.assign(destDatabase.__tables, clone)
+  }
+}
+
 function createDb() {
   const tables = {}
 
@@ -126,6 +134,12 @@ function createDb() {
   }
 
   function getAllAsync(sql, params) {
+    if (/sqlite_master/i.test(sql)) {
+      return Promise.resolve(
+        Object.keys(tables).map((name) => ({ name }))
+      )
+    }
+
     // SELECT * FROM table WHERE id = ?; or SELECT * FROM table;
     const selWhere = sql.match(/SELECT \* FROM\s+(\w+)\s+WHERE\s+(\w+)\s*=\s*\?/i)
     if (selWhere) {
@@ -180,10 +194,11 @@ function createDb() {
   }
 
   return {
+    __tables: tables,
     execAsync,
     runAsync,
     getAllAsync,
   }
 }
 
-module.exports = { openDatabaseSync }
+module.exports = { openDatabaseSync, backupDatabaseAsync }

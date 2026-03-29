@@ -10,7 +10,7 @@ export type Note = {
   body?: string
   category: 'HAVE' | 'URGENT' | 'NICE'
   contextId?: string | null
-  classificationStatus?: 'pending' | 'assigned' | 'error'
+  classificationStatus?: 'pending' | 'assigned' | 'error' | 'manual'
   createdAt?: number
   updatedAt?: number
 }
@@ -34,7 +34,7 @@ type NotesStore = {
   // Actions
   loadNotes: (category?: string) => Promise<void>
   addNote: (note: Note) => void
-  updateNoteClassification: (noteId: string, contextId: string | null, status: 'pending' | 'assigned' | 'error') => void
+  updateNoteClassification: (noteId: string, contextId: string | null, status: 'pending' | 'assigned' | 'error' | 'manual') => void
   addContext: (context: Context) => void
   refreshData: () => Promise<void>
 }
@@ -82,7 +82,7 @@ export const useNotesStore = create<NotesStore>((set, get) => ({
     logger.info('Note added to store', { noteId: note.id, status: note.classificationStatus })
   },
   
-  updateNoteClassification: (noteId: string, contextId: string | null, status: 'pending' | 'assigned' | 'error') => {
+  updateNoteClassification: (noteId: string, contextId: string | null, status: 'pending' | 'assigned' | 'error' | 'manual') => {
     set(state => ({
       notes: state.notes.map(n =>
         n.id === noteId

@@ -1,9 +1,7 @@
 import * as Crypto from 'expo-crypto'
-import { openDatabaseSync } from 'expo-sqlite'
 import { logger } from '../utils/logger'
+import { ensureWritableDatabase, getDb } from './database'
 import { FeedbackRepo } from './feedback-repo'
-
-const db =  openDatabaseSync('mindpalace.db')
 
 export type Note = {
   id: string
@@ -11,7 +9,7 @@ export type Note = {
   body?: string
   category: 'HAVE' | 'URGENT' | 'NICE'
   contextId?: string | null
-  classificationStatus?: 'pending' | 'assigned' | 'error'
+  classificationStatus?: 'pending' | 'assigned' | 'error' | 'manual'
   // Reminder fields
   reminderAt?: number | null           // HAVE/NICE: single reminder
   initialReminderAt?: number | null    // URGENT: first reminder
@@ -23,7 +21,9 @@ export type Note = {
 
 export const NotesRepo = {
   async init() {
+    await ensureWritableDatabase()
     try {
+      const db = getDb()
       await db.execAsync(`
         CREATE TABLE IF NOT EXISTS notes (
           id TEXT PRIMARY KEY,
@@ -36,17 +36,38 @@ export const NotesRepo = {
           updatedAt INTEGER NOT NULL
         )
       `)
+
+      const columns = await db.getAllAsync<{ name: string }>(`PRAGMA table_info(notes)`)
+      const columnNames = new Set(columns.map((column) => column.name))
+
+      if (!columnNames.has('reminderAt')) {
+        await db.execAsync(`ALTER TABLE notes ADD COLUMN reminderAt INTEGER`)
+      }
+
+      if (!columnNames.has('initialReminderAt')) {
+        await db.execAsync(`ALTER TABLE notes ADD COLUMN initialReminderAt INTEGER`)
+      }
+
+      if (!columnNames.has('dueDate')) {
+        await db.execAsync(`ALTER TABLE notes ADD COLUMN dueDate INTEGER`)
+      }
+
+      if (!columnNames.has('status')) {
+        await db.execAsync(`ALTER TABLE notes ADD COLUMN status TEXT DEFAULT 'PENDING'`)
+      }
+
       logger.info('NotesRepo initialized')
     } catch (err) {
       logger.error('NotesRepo init failed', { err })
       throw err
     }
   },
-  async insert(note: Omit<Note, 'id' | 'createdAt' | 'updatedAt' | 'classificationStatus'>): Promise<Note> {
+  async insert(note: Omit<Note, 'id' | 'createdAt' | 'updatedAt'>): Promise<Note> {
     const id = Crypto.randomUUID()
     const now = Date.now()
-    const classificationStatus = 'pending'
+    const classificationStatus = note.classificationStatus ?? (note.contextId ? 'assigned' : 'manual')
     try {
+      const db = getDb()
       await db.runAsync(
         `INSERT INTO notes (id, title, body, category, contextId, classificationStatus, createdAt, updatedAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
         [id, note.title, note.body ?? null, note.category, note.contextId ?? null, classificationStatus, now, now]
@@ -60,6 +81,7 @@ export const NotesRepo = {
   },
   async updateClassification(id: string, contextId: string | null, status: string) {
     try {
+      const db = getDb()
       await db.runAsync(
         `UPDATE notes SET contextId = ?, classificationStatus = ?, updatedAt = ? WHERE id = ?`,
         [contextId, status, Date.now(), id]
@@ -72,6 +94,7 @@ export const NotesRepo = {
   },
   async getById(id: string): Promise<Note | null> {
     try {
+      const db = getDb()
       const rows = await db.getAllAsync<any>(`SELECT * FROM notes WHERE id = ?`, [id])
       const row = rows[0]
       if (!row) return null
@@ -96,6 +119,7 @@ export const NotesRepo = {
   },
   async listAll(): Promise<Note[]> {
     try {
+      const db = getDb()
       const rows = await db.getAllAsync<any>(`SELECT * FROM notes ORDER BY createdAt DESC`)
       return rows.map(row => ({
         id: row.id,
@@ -125,6 +149,7 @@ export const NotesRepo = {
       }
       
       const previousContextId = note.contextId ?? null
+      const db = getDb()
       await db.runAsync(
         `UPDATE notes SET contextId = ?, updatedAt = ? WHERE id = ?`,
         [contextId, Date.now(), noteId]
@@ -156,6 +181,7 @@ export const NotesRepo = {
   },
   async updateReminder(noteId: string, reminderAt: number | null): Promise<void> {
     try {
+      const db = getDb()
       await db.runAsync(
         `UPDATE notes SET reminderAt = ?, updatedAt = ? WHERE id = ?`,
         [reminderAt, Date.now(), noteId]
@@ -168,6 +194,7 @@ export const NotesRepo = {
   },
   async updateUrgentReminders(noteId: string, initialReminderAt: number | null, dueDate: number | null): Promise<void> {
     try {
+      const db = getDb()
       await db.runAsync(
         `UPDATE notes SET initialReminderAt = ?, dueDate = ?, updatedAt = ? WHERE id = ?`,
         [initialReminderAt, dueDate, Date.now(), noteId]
@@ -180,6 +207,7 @@ export const NotesRepo = {
   },
   async updateStatus(noteId: string, status: 'PENDING' | 'DONE' | 'EXPIRED'): Promise<void> {
     try {
+      const db = getDb()
       await db.runAsync(
         `UPDATE notes SET status = ?, updatedAt = ? WHERE id = ?`,
         [status, Date.now(), noteId]
@@ -192,6 +220,7 @@ export const NotesRepo = {
   },
   async deleteNote(noteId: string): Promise<void> {
     try {
+      const db = getDb()
       await db.runAsync(`DELETE FROM notes WHERE id = ?`, [noteId])
       logger.info('Note deleted', { noteId })
     } catch (err) {

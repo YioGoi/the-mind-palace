@@ -1,5 +1,6 @@
 let nextId = 1
 const scheduled = new Map()
+let notificationHandler = null
 
 async function scheduleNotificationAsync({ content, trigger }) {
   const id = `mock-notif-${nextId++}`
@@ -23,9 +24,24 @@ async function requestPermissionsAsync() {
   return { status: 'granted' }
 }
 
+function setNotificationHandler(handler) {
+  notificationHandler = handler
+}
+
+function addNotificationReceivedListener(listener) {
+  return { remove() {} }
+}
+
+function addNotificationResponseReceivedListener(listener) {
+  return { remove() {} }
+}
+
 module.exports = {
   scheduleNotificationAsync,
   cancelScheduledNotificationAsync,
   getAllScheduledNotificationsAsync,
   requestPermissionsAsync,
+  setNotificationHandler,
+  addNotificationReceivedListener,
+  addNotificationResponseReceivedListener,
 }

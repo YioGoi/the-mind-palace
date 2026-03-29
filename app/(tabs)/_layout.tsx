@@ -1,14 +1,21 @@
 import { Tabs } from 'expo-router';
 import React from 'react';
+import { StyleSheet, View } from 'react-native';
 
+import { useThemeStore } from '@/app/store/theme-store';
+import AmbientBackgroundLayer from '@/components/ambient-background-layer';
 import { HapticTab } from '@/components/haptic-tab';
 import { IconSymbol } from '@/components/ui/icon-symbol';
-import { Palette } from '@/constants/palette';
 import { Colors } from '@/constants/theme';
+import { useAppTheme } from '@/hooks/use-app-theme';
 import { useColorScheme } from '@/hooks/use-color-scheme';
+import { useReducedMotion } from '@/hooks/use-reduced-motion';
 
 export default function TabLayout() {
   const colorScheme = useColorScheme();
+  const { colors } = useAppTheme()
+  const reducedMotionEnabled = useReducedMotion()
+  const backgroundAnimationEnabled = useThemeStore((state) => state.backgroundAnimationEnabled)
   const tabNames = {
     home: 'index',
     urgent: 'urgent',
@@ -20,13 +27,13 @@ export default function TabLayout() {
   const getTabNameIconActiveColor = (tabName: string) => {
     switch (tabName) {
       case tabNames.home:
-        return Palette.colorAccent;
+        return colors.colorAccent;
       case tabNames.urgent:
-        return Palette.colorDanger;
+        return colors.colorDanger;
       case tabNames.have:
-        return Palette.colorSuccess;
+        return colors.colorSuccess;
       case tabNames.nice:
-        return Palette.colorAccent;
+        return colors.colorAccent;
       case tabNames.settings:
         return Colors[colorScheme ?? 'light'].tint;
       default:
@@ -35,48 +42,78 @@ export default function TabLayout() {
   };
 
   return (
-    <Tabs
-      screenOptions={({ route }) => ({
-        tabBarActiveTintColor: getTabNameIconActiveColor(route.name),
-        headerShown: false,
-        tabBarButton: HapticTab,
-      })}
-    >
-      <Tabs.Screen
-        name={tabNames.home}
-        options={{
-          title: 'Home',
-          tabBarIcon: ({ color }) => <IconSymbol size={28} name="house.fill" color={color} />,
-        }}
+    <View style={[styles.container, { backgroundColor: colors.colorBgMain }]}>
+      <AmbientBackgroundLayer
+        enabled={backgroundAnimationEnabled}
+        reducedMotion={reducedMotionEnabled}
+        scheme={colorScheme ?? 'light'}
       />
-      <Tabs.Screen
-        name={tabNames.urgent}
-        options={{
-          title: 'Urgent',
-          tabBarIcon: ({ color }) => <IconSymbol size={28} name="exclamationmark.triangle.fill" color={color} />,
-        }}
-      />
-      <Tabs.Screen
-        name={tabNames.have}
-        options={{
-          title: 'Have',
-          tabBarIcon: ({ color }) => <IconSymbol size={28} name="checkmark.circle.fill" color={color} />,
-        }}
-      />
-      <Tabs.Screen
-        name={tabNames.nice}
-        options={{
-          title: 'Nice',
-          tabBarIcon: ({ color }) => <IconSymbol size={28} name="sparkles" color={color} />,
-        }}
-      />
-      <Tabs.Screen
-        name={tabNames.settings}
-        options={{
-          title: 'Settings',
-          tabBarIcon: ({ color }) => <IconSymbol size={28} name="gearshape.fill" color={color} />,
-        }}
-      />
-    </Tabs>
+      <Tabs
+        screenOptions={({ route }) => ({
+          tabBarActiveTintColor: getTabNameIconActiveColor(route.name),
+          headerShown: false,
+          tabBarShowLabel: false,
+          sceneStyle: {
+            backgroundColor: 'transparent',
+          },
+          tabBarButton: HapticTab,
+          tabBarIconStyle: {
+            marginTop: 8,
+          },
+          tabBarItemStyle: {
+            paddingTop: 6,
+          },
+          tabBarStyle: {
+            backgroundColor: colors.colorBgMain,
+            borderTopColor: 'transparent',
+            borderTopWidth: 0,
+            elevation: 0,
+            shadowOpacity: 0,
+          },
+        })}
+      >
+        <Tabs.Screen
+          name={tabNames.home}
+          options={{
+            title: 'Home',
+            tabBarIcon: ({ color }) => <IconSymbol size={32} name="house.fill" color={color} />,
+          }}
+        />
+        <Tabs.Screen
+          name={tabNames.urgent}
+          options={{
+            title: 'Urgent',
+            tabBarIcon: ({ color }) => <IconSymbol size={32} name="figure.walk.motion" color={color} />,
+          }}
+        />
+        <Tabs.Screen
+          name={tabNames.have}
+          options={{
+            title: 'Have',
+            tabBarIcon: ({ color }) => <IconSymbol size={32} name="list.bullet" color={color} />,
+          }}
+        />
+        <Tabs.Screen
+          name={tabNames.nice}
+          options={{
+            title: 'Nice',
+            tabBarIcon: ({ color }) => <IconSymbol size={32} name="lightbulb.max" color={color} />,
+          }}
+        />
+        <Tabs.Screen
+          name={tabNames.settings}
+          options={{
+            title: 'Settings',
+            tabBarIcon: ({ color }) => <IconSymbol size={32} name="slider.horizontal.3" color={color} />,
+          }}
+        />
+      </Tabs>
+    </View>
   );
 }
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+  },
+})

@@ -1,8 +1,6 @@
 import * as Crypto from 'expo-crypto'
-import { openDatabaseSync } from 'expo-sqlite'
 import { logger } from '../utils/logger'
-
-const DB_NAME = 'mindpalace.db'
+import { ensureWritableDatabase, getDb } from './database'
 
 export type ScheduledNotification = {
   id: string
@@ -12,10 +10,10 @@ export type ScheduledNotification = {
   createdAt: number
 }
 
-const db = openDatabaseSync(DB_NAME)
-
 export async function initRepo() {
+  await ensureWritableDatabase()
   try {
+    const db = getDb()
     await db.execAsync(`
       CREATE TABLE IF NOT EXISTS note_notifications (
         id TEXT PRIMARY KEY,
@@ -39,6 +37,7 @@ export async function saveScheduled(noteId: string, notificationId: string, trig
   const id = Crypto.randomUUID()
   const now = Date.now()
   try {
+    const db = getDb()
     await db.runAsync(
       `INSERT INTO note_notifications (id, noteId, notificationId, triggerAt, createdAt) VALUES (?, ?, ?, ?, ?)`,
       [id, noteId, notificationId, triggerAt, now]
@@ -52,6 +51,7 @@ export async function saveScheduled(noteId: string, notificationId: string, trig
 
 export async function getScheduledByNote(noteId: string): Promise<ScheduledNotification[]> {
   try {
+    const db = getDb()
     const rows = await db.getAllAsync<any>(
       `SELECT * FROM note_notifications WHERE noteId = ? ORDER BY triggerAt ASC`,
       [noteId]
@@ -71,6 +71,7 @@ export async function getScheduledByNote(noteId: string): Promise<ScheduledNotif
 
 export async function deleteByNotificationId(notificationId: string): Promise<void> {
   try {
+    const db = getDb()
     await db.runAsync(`DELETE FROM note_notifications WHERE notificationId = ?`, [notificationId])
     logger.info('Deleted scheduled notification', { notificationId })
   } catch (err) {
@@ -81,6 +82,7 @@ export async function deleteByNotificationId(notificationId: string): Promise<vo
 
 export async function deleteAllForNote(noteId: string): Promise<void> {
   try {
+    const db = getDb()
     await db.runAsync(`DELETE FROM note_notifications WHERE noteId = ?`, [noteId])
     logger.info('Deleted all scheduled notifications for note', { noteId })
   } catch (err) {
@@ -91,6 +93,7 @@ export async function deleteAllForNote(noteId: string): Promise<void> {
 
 export async function listAllScheduled(): Promise<ScheduledNotification[]> {
   try {
+    const db = getDb()
     const rows = await db.getAllAsync<any>(`SELECT * FROM note_notifications ORDER BY triggerAt ASC`)
     return rows.map(row => ({
       id: row.id,

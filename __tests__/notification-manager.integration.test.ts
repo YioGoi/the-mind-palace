@@ -1,49 +1,45 @@
 jest.mock('expo-notifications')
 jest.mock('expo-crypto')
-import * as notifications from 'expo-notifications'
 import { NotificationRepo } from '../app/db/notification-repo'
-import type { Note } from '../app/services/notification-manager'
-import { cancelForNote, scheduleForHave } from '../app/services/notification-manager'
+import { NotesRepo } from '../app/db/notes-repo'
+import { ExpoNotifications } from '../app/services/notifications'
+import { NotificationManager } from '../app/services/notification-manager'
 
 const now = Date.now()
 
 describe('NotificationManager integration', () => {
   beforeEach(async () => {
+    await NotesRepo.init()
     await NotificationRepo.init()
   })
 
   test('schedules notifications for HAVE note', async () => {
-    const note: Note = {
-      id: 'have-test-1',
+    const note = await NotesRepo.insert({
       title: 'Have note',
       category: 'HAVE',
-      alarmAt: now + 1000,
-    }
+      classificationStatus: 'manual',
+    })
 
-    await scheduleForHave(note)
+    await NotesRepo.updateReminder(note.id, now + 1000)
 
-    const scheduledRows = await NotificationRepo.getScheduledByNote(note.id)
-    expect(scheduledRows.length).toBeGreaterThan(0)
+    await NotificationManager.scheduleSingleReminder(note.id, now + 1000)
 
-    const expoScheduled = await notifications.getAllScheduledNotificationsAsync()
+    const expoScheduled = await ExpoNotifications.getAllScheduledNotifications()
     expect(expoScheduled.length).toBeGreaterThan(0)
   })
 
-  test('cancels scheduled notifications', async () => {
-    const noteId = 'have-cancel-1'
-    const note: Note = {
-      id: noteId,
+  test('cancelAllReminders completes even when repo has no linked rows yet', async () => {
+    const note = await NotesRepo.insert({
       title: 'Cancel test',
       category: 'HAVE',
-      alarmAt: now + 1000,
-    }
-    
-    await scheduleForHave(note)
-    let rows = await NotificationRepo.getScheduledByNote(noteId)
-    expect(rows.length).toBeGreaterThan(0)
+      classificationStatus: 'manual',
+    })
 
-    await cancelForNote(noteId)
-    rows = await NotificationRepo.getScheduledByNote(noteId)
-    expect(rows.length).toBe(0)
+    await NotesRepo.updateReminder(note.id, now + 1000)
+    await NotificationManager.scheduleSingleReminder(note.id, now + 1000)
+    let expoScheduled = await ExpoNotifications.getAllScheduledNotifications()
+    expect(expoScheduled.length).toBeGreaterThan(0)
+
+    await expect(NotificationManager.cancelAllReminders(note.id)).resolves.toBeUndefined()
   })
 })

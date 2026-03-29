@@ -1,13 +1,11 @@
-import { openDatabaseSync } from 'expo-sqlite'
 import { logger } from '../utils/logger'
+import { ensureWritableDatabase, getDb } from './database'
 
-const DB_NAME = 'mindpalace.db'
 const TABLE = 'contexts'
-
-const db = openDatabaseSync(DB_NAME)
 
 async function execVoid(sql: string) {
   try {
+    const db = getDb()
     await db.execAsync(sql)
   } catch (err) {
     logger.error('SQL exec error (contexts)', { sql, err })
@@ -17,6 +15,7 @@ async function execVoid(sql: string) {
 
 async function run(sql: string, params: any[] = []) {
   try {
+    const db = getDb()
     await db.runAsync(sql, params as any)
   } catch (err) {
     logger.error('SQL run error (contexts)', { sql, params, err })
@@ -26,6 +25,7 @@ async function run(sql: string, params: any[] = []) {
 
 async function getAll<T = any>(sql: string, params: any[] = []): Promise<T[]> {
   try {
+    const db = getDb()
     const rows = await db.getAllAsync<T>(sql, params as any)
     return rows
   } catch (err) {
@@ -35,6 +35,7 @@ async function getAll<T = any>(sql: string, params: any[] = []): Promise<T[]> {
 }
 
 export async function initContextsRepo() {
+  await ensureWritableDatabase()
   await execVoid(`CREATE TABLE IF NOT EXISTS ${TABLE} (
     id TEXT PRIMARY KEY,
     name TEXT NOT NULL,

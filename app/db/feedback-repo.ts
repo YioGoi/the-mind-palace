@@ -1,8 +1,6 @@
 import * as Crypto from 'expo-crypto'
-import { openDatabaseSync } from 'expo-sqlite'
 import { logger } from '../utils/logger'
-
-const db = openDatabaseSync('mindpalace.db')
+import { ensureWritableDatabase, getDb } from './database'
 
 export type UserFeedback = {
   id: string
@@ -16,7 +14,9 @@ export type UserFeedback = {
 
 export const FeedbackRepo = {
   async init() {
+    await ensureWritableDatabase()
     try {
+      const db = getDb()
       await db.execAsync(`
         CREATE TABLE IF NOT EXISTS user_feedback (
           id TEXT PRIMARY KEY,
@@ -51,6 +51,7 @@ export const FeedbackRepo = {
       aiSuggestedContextId === userChosenContextId ? 'correct' : 'incorrect'
 
     try {
+      const db = getDb()
       await db.runAsync(
         `INSERT INTO user_feedback (id, noteId, noteTitle, aiSuggestedContextId, userChosenContextId, feedback, createdAt)
          VALUES (?, ?, ?, ?, ?, ?, ?)`,
@@ -71,6 +72,7 @@ export const FeedbackRepo = {
 
   async getRecentFeedback(limit: number = 50): Promise<UserFeedback[]> {
     try {
+      const db = getDb()
       const rows = await db.getAllAsync<any>(
         `SELECT * FROM user_feedback ORDER BY createdAt DESC LIMIT ?`,
         [limit]
@@ -92,6 +94,7 @@ export const FeedbackRepo = {
 
   async getFeedbackForContext(contextId: string): Promise<UserFeedback[]> {
     try {
+      const db = getDb()
       const rows = await db.getAllAsync<any>(
         `SELECT * FROM user_feedback 
          WHERE aiSuggestedContextId = ? OR userChosenContextId = ?
@@ -115,6 +118,7 @@ export const FeedbackRepo = {
 
   async clearAll(): Promise<void> {
     try {
+      const db = getDb()
       await db.runAsync(`DELETE FROM user_feedback`)
       logger.info('All feedback cleared')
     } catch (err) {
