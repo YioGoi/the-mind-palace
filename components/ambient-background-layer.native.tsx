@@ -12,25 +12,27 @@ type Props = {
 
 type AmbientNode = {
   id: string
-  x: number
-  y: number
-  r: number
-  layer: number
+  band: number
+  angle: number
+  orbit: number
+  depth: number
+  radius: number
   pulse: number
   drift: number
+  tilt: number
 }
 
 type AmbientLink = {
   from: string
   to: string
-  layer: number
+  band: number
 }
 
-const LAYER_CONFIG = [
-  { count: 16, minR: 1.1, maxR: 2.1, driftX: 8, driftY: 5, motionX: 300, motionY: 232, speed: 0.052 },
-  { count: 12, minR: 1.6, maxR: 2.9, driftX: 14, driftY: 9, motionX: 204, motionY: 156, speed: 0.075 },
-  { count: 6, minR: 3.6, maxR: 5.8, driftX: 30, driftY: 19, motionX: 108, motionY: 80, speed: 0.125 },
-  { count: 4, minR: 5.4, maxR: 8.8, driftX: 40, driftY: 26, motionX: 56, motionY: 44, speed: 0.16 },
+const BAND_CONFIG = [
+  { count: 12, orbit: 0.2, orbitJitter: 0.03, speed: 0.18, size: [1.8, 3], lineAlpha: 0.09 },
+  { count: 16, orbit: 0.32, orbitJitter: 0.04, speed: 0.14, size: [2.3, 4.1], lineAlpha: 0.11 },
+  { count: 20, orbit: 0.45, orbitJitter: 0.05, speed: 0.1, size: [2.9, 5.6], lineAlpha: 0.12 },
+  { count: 12, orbit: 0.6, orbitJitter: 0.055, speed: 0.075, size: [4.2, 8.6], lineAlpha: 0.1 },
 ] as const
 
 function createSeededRandom(seed: number) {
@@ -45,31 +47,37 @@ function createAmbientGraph() {
   const nodes: AmbientNode[] = []
   const links: AmbientLink[] = []
 
-  LAYER_CONFIG.forEach((config, layerIndex) => {
-    const rand = createSeededRandom(100 + layerIndex * 97)
-    const layerIds: string[] = []
+  BAND_CONFIG.forEach((config, bandIndex) => {
+    const rand = createSeededRandom(100 + bandIndex * 97)
+    const bandIds: string[] = []
 
     for (let i = 0; i < config.count; i += 1) {
-      const id = `l${layerIndex}-${i}`
-      const x = 0.08 + rand() * 0.84
-      const y = 0.1 + rand() * 0.8
-      const r = config.minR + rand() * (config.maxR - config.minR)
+      const id = `b${bandIndex}-${i}`
+      const angle = (Math.PI * 2 * i) / config.count + rand() * 0.34
+      const orbit = config.orbit + (rand() - 0.5) * config.orbitJitter * 2
+      const depth = -1 + rand() * 2
+      const radius = config.size[0] + rand() * (config.size[1] - config.size[0])
       const pulse = rand() * Math.PI * 2
       const drift = 0.6 + rand() * 1.3
+      const tilt = -0.9 + rand() * 1.8
 
-      nodes.push({ id, x, y, r, layer: layerIndex, pulse, drift })
-      layerIds.push(id)
+      nodes.push({ id, band: bandIndex, angle, orbit, depth, radius, pulse, drift, tilt })
+      bandIds.push(id)
     }
 
-    for (let i = 0; i < layerIds.length - 1; i += 1) {
-      links.push({ from: layerIds[i], to: layerIds[i + 1], layer: layerIndex })
+    for (let i = 0; i < bandIds.length; i += 1) {
+      links.push({
+        from: bandIds[i],
+        to: bandIds[(i + 1) % bandIds.length],
+        band: bandIndex,
+      })
     }
 
-    for (let i = 0; i < Math.max(1, Math.floor(layerIds.length / 2)); i += 1) {
-      const from = layerIds[i]
-      const to = layerIds[(i + 2) % layerIds.length]
+    for (let i = 0; i < Math.max(2, Math.floor(bandIds.length / 3)); i += 1) {
+      const from = bandIds[i]
+      const to = bandIds[(i + 3) % bandIds.length]
       if (from !== to) {
-        links.push({ from, to, layer: layerIndex })
+        links.push({ from, to, band: bandIndex })
       }
     }
   })
@@ -141,7 +149,7 @@ function useAmbientAnimation(active: boolean) {
         }
 
         setMotionStatus('granted')
-        DeviceMotion.setUpdateInterval(120)
+        DeviceMotion.setUpdateInterval(48)
         subscription = DeviceMotion.addListener((event) => {
           const gamma =
             event.rotation?.gamma ??
@@ -149,9 +157,10 @@ function useAmbientAnimation(active: boolean) {
           const beta =
             event.rotation?.beta ??
             ((event.accelerationIncludingGravity?.y ?? 0) * 24)
+          const alpha = event.rotation?.alpha ?? 0
           setMotion({
-            x: clamp(gamma / 45, -1, 1),
-            y: clamp(beta / 60, -1, 1),
+            x: clamp((gamma + alpha * 0.12) / 20, -1, 1),
+            y: clamp(beta / 26, -1, 1),
           })
         })
       } catch {
@@ -176,8 +185,8 @@ export function AmbientBackgroundLayer({ enabled, reducedMotion = false, scheme 
   const { colors } = useAppTheme()
   const { phase, motion } = useAmbientAnimation(enabled && !reducedMotion)
   const graph = useMemo(() => createAmbientGraph(), [])
-  const viewTranslateX = reducedMotion ? 0 : motion.x * 44 * colors.ambientMotionMultiplier
-  const viewTranslateY = reducedMotion ? 0 : motion.y * 36 * colors.ambientMotionMultiplier
+  const viewTranslateX = reducedMotion ? 0 : motion.x * 72 * colors.ambientMotionMultiplier
+  const viewTranslateY = reducedMotion ? 0 : motion.y * 58 * colors.ambientMotionMultiplier
   const baseRgb = useMemo(
     () => (scheme === 'dark' ? { r: 255, g: 255, b: 255 } : { r: 24, g: 24, b: 24 }),
     [scheme]
@@ -185,36 +194,36 @@ export function AmbientBackgroundLayer({ enabled, reducedMotion = false, scheme 
 
   const layers = useMemo(
     () =>
-      LAYER_CONFIG.map((config, index) => {
-        const depth = (index + 1) / LAYER_CONFIG.length
-        const shiftX = reducedMotion
-          ? 0
-          : Math.sin(phase * config.speed + index) * config.driftX +
-            motion.x * config.motionX * colors.ambientMotionMultiplier
-        const shiftY = reducedMotion
-          ? 0
-          : Math.cos(phase * config.speed * 0.78 + index * 0.35) * config.driftY +
-            motion.y * config.motionY * colors.ambientMotionMultiplier
+      BAND_CONFIG.map((config, index) => {
+        const centerX = width * 0.5
+        const centerY = height * 0.44
 
-        const layerNodes = graph.nodes.filter((node) => node.layer === index).map((node) => {
-          const pulse = reducedMotion ? 1 : 1 + Math.sin(phase * (1.1 + node.drift * 0.14) + node.pulse) * 0.16
-          const perspectiveScale = reducedMotion
-            ? 1
-            : 1 + motion.x * depth * 0.24 + motion.y * depth * 0.18
-          const haloScale = 2.8 + depth * 2.8
+        const layerNodes = graph.nodes.filter((node) => node.band === index).map((node) => {
+          const rotation = phase * config.speed * colors.ambientIdleSpeed + node.pulse * 0.08
+          const twist = reducedMotion ? 0 : motion.x * 1.35 + motion.y * 0.42
+          const angle = node.angle + rotation + twist * (0.7 + index * 0.18)
+          const orbitBase = Math.min(width, height) * node.orbit
+          const perspective = 1 + node.depth * 0.34 + (reducedMotion ? 0 : motion.y * node.depth * 0.28)
+          const projectedOrbit = orbitBase * perspective
+          const pulse = reducedMotion ? 1 : 1 + Math.sin(phase * (1.2 + node.drift * 0.16) + node.pulse) * 0.22
+          const cx = centerX + Math.cos(angle) * projectedOrbit + Math.sin(phase * 0.9 + node.pulse) * 8
+          const cy = centerY + Math.sin(angle) * projectedOrbit * (0.56 + node.tilt * 0.08) + node.depth * 24 + motion.y * 34
+          const depthScale = 0.82 + ((node.depth + 1) / 2) * 1.9
+          const radius = Math.max(1.05, node.radius * depthScale * pulse)
+          const glowRadius = radius * (2.8 + depthScale * 0.9)
           return {
             ...node,
-            cx: node.x * width + shiftX,
-            cy: node.y * height + shiftY,
-            radius: Math.max(0.9, node.r * pulse * perspectiveScale),
-            glowRadius: Math.max(3, node.r * haloScale * pulse),
-            nodeColor: `rgba(${baseRgb.r}, ${baseRgb.g}, ${baseRgb.b}, ${0.05 + depth * 0.2})`,
-            glowColor: `rgba(${baseRgb.r}, ${baseRgb.g}, ${baseRgb.b}, ${0.012 + depth * 0.05})`,
-            lineColor: `rgba(${baseRgb.r}, ${baseRgb.g}, ${baseRgb.b}, ${0.02 + depth * 0.11})`,
+            cx,
+            cy,
+            radius,
+            glowRadius: Math.max(4, glowRadius),
+            nodeColor: `rgba(${baseRgb.r}, ${baseRgb.g}, ${baseRgb.b}, ${0.08 + depthScale * 0.11})`,
+            glowColor: `rgba(${baseRgb.r}, ${baseRgb.g}, ${baseRgb.b}, ${0.016 + depthScale * 0.032})`,
+            lineColor: `rgba(${baseRgb.r}, ${baseRgb.g}, ${baseRgb.b}, ${config.lineAlpha})`,
           }
         })
 
-        const layerLinks = graph.links.filter((link) => link.layer === index).map((link) => ({
+        const layerLinks = graph.links.filter((link) => link.band === index).map((link) => ({
           ...link,
           start: layerNodes.find((node) => node.id === link.from),
           end: layerNodes.find((node) => node.id === link.to),
@@ -222,8 +231,25 @@ export function AmbientBackgroundLayer({ enabled, reducedMotion = false, scheme 
 
         return { layerNodes, layerLinks }
       }),
-    [baseRgb.b, baseRgb.g, baseRgb.r, colors.ambientMotionMultiplier, graph.links, graph.nodes, height, motion.x, motion.y, phase, reducedMotion, width]
+    [baseRgb.b, baseRgb.g, baseRgb.r, colors.ambientIdleSpeed, graph.links, graph.nodes, height, motion.x, motion.y, phase, reducedMotion, width]
   )
+
+  const coreSphere = useMemo(() => {
+    const centerX = width * 0.5 + (reducedMotion ? 0 : motion.x * 18 * colors.ambientMotionMultiplier)
+    const centerY = height * 0.44 + (reducedMotion ? 0 : motion.y * 22 * colors.ambientMotionMultiplier)
+    const pulse = reducedMotion ? 1 : 1 + Math.sin(phase * 1.35) * 0.16
+    const coreRadius = Math.max(24, Math.min(width, height) * 0.074 * pulse)
+    return {
+      centerX,
+      centerY,
+      coreRadius,
+      glowRadius: coreRadius * 2.9,
+      haloRadius: coreRadius * 5.2,
+      glowColor: `rgba(${baseRgb.r}, ${baseRgb.g}, ${baseRgb.b}, ${scheme === 'dark' ? 0.1 : 0.07})`,
+      haloColor: `rgba(${baseRgb.r}, ${baseRgb.g}, ${baseRgb.b}, ${scheme === 'dark' ? 0.05 : 0.032})`,
+      coreColor: `rgba(${baseRgb.r}, ${baseRgb.g}, ${baseRgb.b}, ${scheme === 'dark' ? 0.24 : 0.16})`,
+    }
+  }, [baseRgb.b, baseRgb.g, baseRgb.r, colors.ambientMotionMultiplier, height, motion.x, motion.y, phase, reducedMotion, scheme, width])
 
   if (!enabled || width === 0 || height === 0) return null
 
@@ -238,6 +264,9 @@ export function AmbientBackgroundLayer({ enabled, reducedMotion = false, scheme 
       ]}
     >
       <Canvas style={StyleSheet.absoluteFill}>
+        <Circle cx={coreSphere.centerX} cy={coreSphere.centerY} r={coreSphere.haloRadius} color={coreSphere.haloColor} />
+        <Circle cx={coreSphere.centerX} cy={coreSphere.centerY} r={coreSphere.glowRadius} color={coreSphere.glowColor} />
+        <Circle cx={coreSphere.centerX} cy={coreSphere.centerY} r={coreSphere.coreRadius} color={coreSphere.coreColor} />
         {layers.map((layer, index) => (
           <Group key={`ambient-layer-${index}`}>
             {layer.layerLinks.map((link) => {
@@ -248,13 +277,19 @@ export function AmbientBackgroundLayer({ enabled, reducedMotion = false, scheme 
                   p1={vec(link.start.cx, link.start.cy)}
                   p2={vec(link.end.cx, link.end.cy)}
                   color={link.start.lineColor}
-                  strokeWidth={0.45 + index * 0.36}
+                  strokeWidth={0.55 + index * 0.28}
                 />
               )
             })}
 
             {layer.layerNodes.map((node) => (
               <React.Fragment key={node.id}>
+                <Line
+                  p1={vec(coreSphere.centerX, coreSphere.centerY)}
+                  p2={vec(node.cx, node.cy)}
+                  color={`rgba(${baseRgb.r}, ${baseRgb.g}, ${baseRgb.b}, ${0.015 + index * 0.012})`}
+                  strokeWidth={0.35 + index * 0.18}
+                />
                 <Circle cx={node.cx} cy={node.cy} r={node.glowRadius} color={node.glowColor} />
                 <Circle cx={node.cx} cy={node.cy} r={node.radius} color={node.nodeColor} />
               </React.Fragment>
@@ -267,5 +302,3 @@ export function AmbientBackgroundLayer({ enabled, reducedMotion = false, scheme 
 }
 
 export default AmbientBackgroundLayer
-
-const styles = StyleSheet.create({})

@@ -1,7 +1,7 @@
 import { ThemedText } from '@/components/themed-text'
 import { useAppTheme } from '@/hooks/use-app-theme'
 import DateTimePicker from '@react-native-community/datetimepicker'
-import React, { useEffect, useMemo, useState } from 'react'
+import React, { useDeferredValue, useEffect, useMemo, useState } from 'react'
 import { Alert, Animated, Easing, Modal, Platform, ScrollView, StyleSheet, TouchableOpacity, View } from 'react-native'
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 
@@ -43,6 +43,20 @@ function makeDefaultReminder() {
 
 function makeDefaultDue(reminderDate: Date) {
   return new Date(reminderDate.getTime() + ONE_HOUR_MS)
+}
+
+function mergeDatePart(base: Date | null, pickedDate: Date) {
+  const source = base ?? pickedDate
+  const next = new Date(source)
+  next.setFullYear(pickedDate.getFullYear(), pickedDate.getMonth(), pickedDate.getDate())
+  return next
+}
+
+function mergeTimePart(base: Date | null, pickedTime: Date) {
+  const source = base ?? pickedTime
+  const next = new Date(source)
+  next.setHours(pickedTime.getHours(), pickedTime.getMinutes(), 0, 0)
+  return next
 }
 
 function formatDateLabel(value: Date | null) {
@@ -166,8 +180,13 @@ export default function NewNoteReminderSheet({
     () => draftDueDate ?? makeDefaultDue(draftReminderDate ?? makeDefaultReminder()),
     [draftDueDate, draftReminderDate]
   )
+  const deferredReminderDate = useDeferredValue(draftReminderDate)
+  const deferredDueDate = useDeferredValue(draftDueDate)
   const isDueTarget = target === 'due' && category === 'URGENT'
   const sheetTitle = isDueTarget ? 'Due Date' : 'Reminder'
+  const isDoneDisabled = isDueTarget
+    ? !draftDueDate || !draftReminderDate || (draftReminderDate !== null && draftDueDate !== null && draftReminderDate >= draftDueDate)
+    : !draftReminderDate
 
   if (!renderModal) return null
 
@@ -193,8 +212,13 @@ export default function NewNoteReminderSheet({
                 <ThemedText type="defaultSemiBold" style={{ color: colors.colorTextSecondary }}>Cancel</ThemedText>
               </TouchableOpacity>
               <ThemedText type="defaultSemiBold">{sheetTitle}</ThemedText>
-              <TouchableOpacity onPress={handleConfirm} activeOpacity={0.8}>
-                <ThemedText type="defaultSemiBold" style={{ color: colors.colorPrimary }}>Done</ThemedText>
+              <TouchableOpacity onPress={handleConfirm} activeOpacity={0.8} disabled={isDoneDisabled}>
+                <ThemedText
+                  type="defaultSemiBold"
+                  style={{ color: isDoneDisabled ? colors.colorTextMuted : colors.colorPrimary }}
+                >
+                  Done
+                </ThemedText>
               </TouchableOpacity>
             </View>
 
@@ -207,7 +231,7 @@ export default function NewNoteReminderSheet({
                 <View style={[styles.card, { backgroundColor: colors.colorBgElevated, borderColor: colors.colorBorder }]}>
                   <ThemedText type="defaultSemiBold">Reminder</ThemedText>
                   <ThemedText style={{ color: colors.colorTextSecondary }}>
-                    {`${formatDateLabel(draftReminderDate)} • ${formatTimeLabel(draftReminderDate)}`}
+                    {`${formatDateLabel(deferredReminderDate)} • ${formatTimeLabel(deferredReminderDate)}`}
                   </ThemedText>
                   <View style={[styles.pickerSection, { borderColor: colors.colorBorder }]}>
                     <ThemedText style={{ paddingLeft: 14 }} type="defaultSemiBold">Date</ThemedText>
@@ -217,7 +241,7 @@ export default function NewNoteReminderSheet({
                       display={Platform.OS === 'ios' ? 'inline' : 'default'}
                       onChange={(_event, selectedDate) => {
                         if (selectedDate) {
-                          setDraftReminderDate(selectedDate)
+                          setDraftReminderDate((current) => mergeDatePart(current ?? reminderValue, selectedDate))
                         }
                       }}
                       minimumDate={new Date()}
@@ -234,7 +258,7 @@ export default function NewNoteReminderSheet({
                       display={Platform.OS === 'ios' ? 'spinner' : 'default'}
                       onChange={(_event, selectedDate) => {
                         if (selectedDate) {
-                          setDraftReminderDate(selectedDate)
+                          setDraftReminderDate((current) => mergeTimePart(current ?? reminderValue, selectedDate))
                         }
                       }}
                       textColor={colors.colorTextMain}
@@ -249,7 +273,7 @@ export default function NewNoteReminderSheet({
                 <View style={[styles.card, { backgroundColor: colors.colorBgElevated, borderColor: colors.colorBorder }]}>
                   <ThemedText type="defaultSemiBold">Due Date</ThemedText>
                   <ThemedText style={{ color: colors.colorTextSecondary }}>
-                    {`${formatDateLabel(draftDueDate)} • ${formatTimeLabel(draftDueDate)}`}
+                    {`${formatDateLabel(deferredDueDate)} • ${formatTimeLabel(deferredDueDate)}`}
                   </ThemedText>
                   <View style={[styles.pickerSection, { borderColor: colors.colorBorder }]}>
                     <ThemedText style={{ paddingLeft: 14 }} type="defaultSemiBold">Date</ThemedText>
@@ -258,7 +282,9 @@ export default function NewNoteReminderSheet({
                       mode="date"
                       display={Platform.OS === 'ios' ? 'inline' : 'default'}
                       onChange={(_event, selectedDate) => {
-                        if (selectedDate) setDraftDueDate(selectedDate)
+                        if (selectedDate) {
+                          setDraftDueDate((current) => mergeDatePart(current ?? dueValue, selectedDate))
+                        }
                       }}
                       minimumDate={draftReminderDate ?? new Date()}
                       textColor={colors.colorTextMain}
@@ -273,7 +299,9 @@ export default function NewNoteReminderSheet({
                       mode="time"
                       display={Platform.OS === 'ios' ? 'spinner' : 'default'}
                       onChange={(_event, selectedDate) => {
-                        if (selectedDate) setDraftDueDate(selectedDate)
+                        if (selectedDate) {
+                          setDraftDueDate((current) => mergeTimePart(current ?? dueValue, selectedDate))
+                        }
                       }}
                       textColor={colors.colorTextMain}
                       themeVariant={isDark ? 'dark' : 'light'}

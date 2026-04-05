@@ -87,7 +87,7 @@ export default function HomeScreen() {
     <SafeAreaView style={{ flex: 1, backgroundColor: 'transparent' }}>
       <ParallaxScrollView
         transparentContent
-        headerBackgroundColor={{ light: '#FFFFFF', dark: '#000000' }}
+        headerBackgroundColor={{ light: 'transparent', dark: 'transparent' }}
         headerImage={
           <Image
             source={require('@/assets/images/hero-banner.png')}
