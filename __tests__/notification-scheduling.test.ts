@@ -1,4 +1,4 @@
-import { generateUrgentSchedule, getRepeatIntervalMs } from '../app/utils/notification-scheduling'
+import { generateUrgentSchedule, getRepeatIntervalMs } from '../lib/utils/notification-scheduling'
 
 describe('getRepeatIntervalMs', () => {
   const HOUR = 60 * 60 * 1000

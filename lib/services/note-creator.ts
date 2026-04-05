@@ -1,5 +1,5 @@
 import { classifyNoteAsync } from '../../services/classification-pipeline';
-import { isPremiumPlan } from '../../services/ai/config';
+import { getAiCapabilities } from '../../services/ai/config';
 import { ContextsRepo } from '../db/contexts-repo';
 import { NotesRepo } from '../db/notes-repo';
 import { useNotesStore } from '../store/notes-store';
@@ -26,10 +26,12 @@ export async function createNote({
   await NotesRepo.init()
 
   const shouldAutoClassify = autoClassify ?? false
+  const aiCapabilities = getAiCapabilities()
+  const canAutoClassify = shouldAutoClassify && aiCapabilities.canAutoClassifyNotes
   const shouldAssignImmediately = Boolean(contextId)
   const classificationStatus = shouldAssignImmediately
     ? 'assigned'
-    : shouldAutoClassify
+    : canAutoClassify
     ? 'pending'
     : 'manual'
 
@@ -50,7 +52,7 @@ export async function createNote({
 
   useNotesStore.getState().addNote(note)
 
-  if (shouldAutoClassify && isPremiumPlan()) {
+  if (canAutoClassify) {
     classifyNoteAsync(note.id).catch(err => {
       logger.error('Classification failed (async)', { noteId: note.id, err })
     })

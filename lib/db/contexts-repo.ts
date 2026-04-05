@@ -54,6 +54,24 @@ export async function createContexts(names: string[], category = 'HAVE') {
   logger.info('Created contexts', { count: names.length })
 }
 
+export async function createContext(name: string, category = 'HAVE') {
+  const now = Date.now()
+  const id = `${category.toLowerCase()}-${now}-${Math.random().toString(36).slice(2, 8)}`
+  await run(`INSERT INTO ${TABLE} (id, name, category, createdAt) VALUES (?, ?, ?, ?);`, [id, name, category, now])
+  logger.info('Created context', { id, category, name })
+  return { id, name, category, createdAt: now }
+}
+
+export async function updateContextName(id: string, name: string) {
+  await run(`UPDATE ${TABLE} SET name = ? WHERE id = ?;`, [name, id])
+  logger.info('Updated context', { id })
+}
+
+export async function deleteContext(id: string) {
+  await run(`DELETE FROM ${TABLE} WHERE id = ?;`, [id])
+  logger.info('Deleted context', { id })
+}
+
 export async function listContexts() {
   const rows = await getAll<any>(`SELECT * FROM ${TABLE};`)
   return rows.map((r) => ({ id: r.id, name: r.name, category: r.category, createdAt: r.createdAt }))
@@ -61,6 +79,9 @@ export async function listContexts() {
 
 export const ContextsRepo = {
   init: initContextsRepo,
+  createContext,
   createContexts,
+  updateContextName,
+  deleteContext,
   listContexts,
 }

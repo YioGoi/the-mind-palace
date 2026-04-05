@@ -11,6 +11,10 @@ export type Note = {
   category: 'HAVE' | 'URGENT' | 'NICE'
   contextId?: string | null
   classificationStatus?: 'pending' | 'assigned' | 'error' | 'manual'
+  reminderAt?: number | null
+  initialReminderAt?: number | null
+  dueDate?: number | null
+  status?: 'PENDING' | 'DONE' | 'EXPIRED'
   createdAt?: number
   updatedAt?: number
 }
@@ -27,11 +31,13 @@ type NotesStore = {
   notes: Note[]
   contexts: Context[]
   loading: boolean
+  hydrated: boolean
   
   // Computed
   pendingCount: number
   
   // Actions
+  initialize: () => Promise<void>
   loadNotes: (category?: string) => Promise<void>
   addNote: (note: Note) => void
   updateNoteClassification: (noteId: string, contextId: string | null, status: 'pending' | 'assigned' | 'error' | 'manual') => void
@@ -43,9 +49,15 @@ export const useNotesStore = create<NotesStore>((set, get) => ({
   notes: [],
   contexts: [],
   loading: false,
+  hydrated: false,
   
   get pendingCount() {
     return get().notes.filter(n => n.classificationStatus === 'pending').length
+  },
+
+  initialize: async () => {
+    if (get().hydrated || get().loading) return
+    await get().loadNotes()
   },
   
   loadNotes: async (category?: string) => {
@@ -59,9 +71,10 @@ export const useNotesStore = create<NotesStore>((set, get) => ({
       const allContexts = await ContextsRepo.listContexts()
       
       set({
-        notes: (category ? allNotes.filter(n => n.category === category) : allNotes) as Note[],
+        notes: allNotes as Note[],
         contexts: allContexts as Context[],
         loading: false,
+        hydrated: true,
       })
       
       logger.info('Notes store loaded', { 
@@ -71,7 +84,7 @@ export const useNotesStore = create<NotesStore>((set, get) => ({
       })
     } catch (err) {
       logger.error('Failed to load notes', { err })
-      set({ loading: false })
+      set({ loading: false, hydrated: true })
     }
   },
   

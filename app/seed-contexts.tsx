@@ -4,7 +4,7 @@ import { Stack, useRouter } from 'expo-router';
 import React, { useState } from 'react';
 import { Button, StyleSheet, TextInput, View } from 'react-native';
 import { useAppTheme } from '@/hooks/use-app-theme';
-import { logger } from './utils/logger';
+import { logger } from '../lib/utils/logger';
 // Set a custom screen title for this route
 export const unstable_settings = {
   title: 'Create Contexts',
@@ -24,7 +24,7 @@ export default function SeedContextsScreen() {
     if (!allFilled) return
     setLoading(true)
     try {
-      const mod = await import('./db/contexts-repo')
+      const mod = await import('../lib/db/contexts-repo')
       await mod.ContextsRepo.init()
       await mod.ContextsRepo.createContexts([a.trim(), b.trim(), c.trim()])
       logger.info('Seeded first contexts', { values: [a, b, c] })

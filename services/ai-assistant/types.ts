@@ -8,6 +8,8 @@ export type AssistantMessage = {
 
 export type NoteCategory = 'URGENT' | 'HAVE' | 'NICE'
 
+export type AssistantIntent = 'capture' | 'cleanup'
+
 export type CreateNoteAction = {
   type: 'create_note'
   title: string
@@ -27,7 +29,52 @@ export type AssistantActionPlan = {
   summary: string
 }
 
-export type AssistantActionResponse = {
-  createdNotes: Array<{ id: string; title: string }>
+export type CleanupAction =
+  | {
+      type: 'rename_context'
+      contextId: string
+      newName: string
+      reason: string
+    }
+  | {
+      type: 'move_notes'
+      noteIds: string[]
+      targetContextId: string
+      reason: string
+    }
+  | {
+      type: 'merge_contexts'
+      sourceContextId: string
+      targetContextId: string
+      reason: string
+    }
+  | {
+      type: 'delete_empty_context'
+      contextId: string
+      reason: string
+    }
+  | {
+      type: 'create_context_and_move_notes'
+      noteIds: string[]
+      category: NoteCategory
+      contextName: string
+      reason: string
+    }
+
+export type CleanupPlan = {
   summary: string
+  actions: CleanupAction[]
+}
+
+export type CleanupApplyResult = {
+  appliedCount: number
+  skippedCount: number
+  summary: string
+  details: string[]
+}
+
+export type AssistantActionResponse = {
+  createdNotes: { id: string; title: string }[]
+  summary: string
+  warnings: string[]
 }

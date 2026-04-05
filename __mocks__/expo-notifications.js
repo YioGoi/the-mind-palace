@@ -2,6 +2,12 @@ let nextId = 1
 const scheduled = new Map()
 let notificationHandler = null
 
+function __resetMockNotifications() {
+  nextId = 1
+  scheduled.clear()
+  notificationHandler = null
+}
+
 async function scheduleNotificationAsync({ content, trigger }) {
   const id = `mock-notif-${nextId++}`
   scheduled.set(id, { content, trigger })
@@ -24,6 +30,10 @@ async function requestPermissionsAsync() {
   return { status: 'granted' }
 }
 
+async function getLastNotificationResponseAsync() {
+  return null
+}
+
 function setNotificationHandler(handler) {
   notificationHandler = handler
 }
@@ -41,7 +51,9 @@ module.exports = {
   cancelScheduledNotificationAsync,
   getAllScheduledNotificationsAsync,
   requestPermissionsAsync,
+  getLastNotificationResponseAsync,
   setNotificationHandler,
   addNotificationReceivedListener,
   addNotificationResponseReceivedListener,
+  __resetMockNotifications,
 }

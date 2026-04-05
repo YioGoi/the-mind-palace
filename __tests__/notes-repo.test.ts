@@ -1,6 +1,6 @@
 jest.mock('expo-sqlite')
 jest.mock('expo-crypto')
-import { NotesRepo } from '../app/db/notes-repo'
+import { NotesRepo } from '../lib/db/notes-repo'
 
 describe('NotesRepo basic', () => {
   test('init -> insert -> getById', async () => {

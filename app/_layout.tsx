@@ -7,24 +7,29 @@ import {
   useFonts,
 } from '@expo-google-fonts/manrope';
 import { DarkTheme, DefaultTheme, ThemeProvider } from '@react-navigation/native';
-import { Stack, usePathname } from 'expo-router';
+import { Stack, usePathname, useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import React, { useEffect, useRef, useState } from 'react';
-import { AppState, AppStateStatus, StyleSheet, TouchableOpacity } from 'react-native';
+import { AppState, AppStateStatus, StyleSheet, TouchableOpacity, View } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import 'react-native-reanimated';
 
+import { ThemedText } from '@/components/themed-text';
 import { IconSymbol } from '@/components/ui/icon-symbol';
-import { Palette } from '@/constants/palette';
 import { AppFontFamilies } from '@/constants/theme';
 import { useAppTheme } from '@/hooks/use-app-theme';
 import { useColorScheme } from '@/hooks/use-color-scheme';
-import { useRouter } from 'expo-router';
 import { AiAssistantModal } from '../components/ai-assistant-modal';
-import { isPremiumPlan } from '../services/ai/config';
-import { NotificationManager } from './services/notification-manager';
-import { useThemeStore } from './store/theme-store';
-import { logger } from './utils/logger';
+import { PremiumUpgradeSheet } from '../components/premium-upgrade-sheet';
+import { NotificationManager } from '../lib/services/notification-manager';
+import { PremiumCleanupNudge } from '../lib/services/premium-cleanup-nudge';
+import { useAiAssistantStore } from '../lib/store/ai-assistant-store';
+import { useAiUpsellStore } from '../lib/store/ai-upsell-store';
+import { useNotesStore } from '../lib/store/notes-store';
+import { useThemeStore } from '../lib/store/theme-store';
+import { getAiEntryVisibility } from '../lib/utils/ai-entry-visibility';
+import { logger } from '../lib/utils/logger';
+import { getAiCapabilities } from '../services/ai/config';
 
 export const unstable_settings = {
   anchor: '(tabs)',
@@ -38,7 +43,6 @@ const styles = StyleSheet.create({
     width: 44,
     height: 44,
     borderRadius: 22,
-    backgroundColor: Palette.colorPrimary,
     alignItems: 'center',
     justifyContent: 'center',
     zIndex: 999,
@@ -54,11 +58,55 @@ const styles = StyleSheet.create({
     fontFamily: AppFontFamilies.bold,
     letterSpacing: 0.5,
   },
+  aiTooltipWrap: {
+    position: 'absolute',
+    top: 74,
+    right: 62,
+    width: 222,
+    zIndex: 998,
+    alignItems: 'flex-start',
+  },
+  aiTooltipBubble: {
+    width: '100%',
+    borderWidth: 1,
+    borderRadius: 18,
+    paddingHorizontal: 14,
+    paddingVertical: 11,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.12,
+    shadowRadius: 10,
+    elevation: 8,
+  },
+  aiTooltipTailShadow: {
+    position: 'absolute',
+    right: -8,
+    top: 17,
+    width: 18,
+    height: 18,
+    borderRadius: 4,
+    transform: [{ rotate: '45deg' }],
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.08,
+    shadowRadius: 6,
+    elevation: 4,
+  },
+  aiTooltipTail: {
+    position: 'absolute',
+    right: -7,
+    top: 18,
+    width: 16,
+    height: 16,
+    borderTopWidth: 1,
+    borderRightWidth: 1,
+    transform: [{ rotate: '45deg' }],
+  },
 });
 
 export default function RootLayout() {
   const colorScheme = useColorScheme();
-  const { colors } = useAppTheme()
+  const { colors, isDark } = useAppTheme()
   const pathname = usePathname()
   const [fontsLoaded] = useFonts({
     Manrope_400Regular,
@@ -68,27 +116,62 @@ export default function RootLayout() {
     Manrope_800ExtraBold,
   });
   const initializeTheme = useThemeStore(state => state.initialize)
+  const themeHydrated = useThemeStore(state => state.hydrated)
   const devAiPlanOverride = useThemeStore(state => state.devAiPlanOverride)
+  const initializeUpsell = useAiUpsellStore(state => state.initialize)
+  const initializeNotes = useNotesStore(state => state.initialize)
+  const allNotes = useNotesStore(state => state.notes)
+  const hasUnlockedAiRevealAt13 = useAiUpsellStore(state => state.hasUnlockedAiRevealAt13)
+  const markAiRevealSeen = useAiUpsellStore(state => state.markAiRevealSeen)
   const appState = useRef<AppStateStatus | null>(null);
-  const [aiModalVisible, setAiModalVisible] = useState(false);
+  const bootstrapped = useRef(false)
+  const [premiumSheetVisible, setPremiumSheetVisible] = useState(false);
   const router = useRouter()
-  const premiumEnabled = isPremiumPlan()
+  const aiModalVisible = useAiAssistantStore(state => state.visible)
+  const openAiAssistant = useAiAssistantStore(state => state.open)
+  const closeAiAssistant = useAiAssistantStore(state => state.close)
+  const aiCapabilities = themeHydrated ? getAiCapabilities() : null
+  const premiumEnabled = aiCapabilities?.premiumEnabled ?? false
+  const premiumEnabledRef = useRef(premiumEnabled)
+  const aiUpsellMarketingEnabled = aiCapabilities?.marketingEnabled ?? false
   const hideAiButton = pathname === '/seed-contexts'
+  const notesCreatedCount = allNotes.length
+  const { freeAiVisible, showAiButton, showAiRevealTooltip } = getAiEntryVisibility({
+    premiumEnabled,
+    aiUpsellMarketingEnabled,
+    notesCreatedCount,
+    hasUnlockedAiRevealAt13,
+    hideAiButton,
+  })
+
+  useEffect(() => {
+    premiumEnabledRef.current = premiumEnabled
+  }, [premiumEnabled])
 
   useEffect(() => {
     if (hideAiButton && aiModalVisible) {
-      setAiModalVisible(false)
+      closeAiAssistant()
     }
-  }, [hideAiButton, aiModalVisible])
+    if (hideAiButton && premiumSheetVisible) {
+      setPremiumSheetVisible(false)
+    }
+  }, [hideAiButton, aiModalVisible, closeAiAssistant, premiumSheetVisible])
 
   useEffect(() => {
+    if (bootstrapped.current) {
+      return
+    }
+    bootstrapped.current = true
+
     initializeTheme().catch((e) => logger.error('Failed to initialize theme preference', { err: e }))
+    initializeUpsell().catch((e) => logger.error('Failed to initialize AI upsell state', { err: e }))
+    initializeNotes().catch((e) => logger.error('Failed to initialize notes store', { err: e }))
 
     // Initialize notification system DB etc.
     NotificationManager.initNotificationSystem().catch((e) => logger.error('Failed to init notifications', { err: e }))
 
     // Reconcile on initial mount (cold start)
-    import('./db/notes-repo').then(async (mod) => {
+    import('../lib/db/notes-repo').then(async (mod) => {
       await mod.NotesRepo.init()
       try {
         await NotificationManager.reconcileUrgentNotes(__DEV__)
@@ -96,18 +179,9 @@ export default function RootLayout() {
         logger.error('Failed to reconcile on start', { err: e })
       }
 
-      if (premiumEnabled) {
-        try {
-          const { reclassifyPendingNotes } = await import('../services/classification-pipeline')
-          await reclassifyPendingNotes()
-        } catch (e) {
-          logger.error('Failed to reclassify pending notes', { err: e })
-        }
-      }
-
       // Check contexts; if none exist, route to seeding screen
       try {
-        const ctxMod = await import('./db/contexts-repo')
+        const ctxMod = await import('../lib/db/contexts-repo')
         await ctxMod.ContextsRepo.init()
         const contexts = await ctxMod.ContextsRepo.listContexts()
         if (!contexts || contexts.length === 0) {
@@ -128,7 +202,12 @@ export default function RootLayout() {
         logger.info('App resumed: running reconciliation')
         NotificationManager.reconcileUrgentNotes(__DEV__)
           .catch((e) => logger.error('Failed to reconcile on resume', { err: e }))
-        if (premiumEnabled) {
+        if (premiumEnabledRef.current) {
+          PremiumCleanupNudge.schedule().catch((e) =>
+            logger.error('Failed to schedule premium cleanup nudge on resume', { err: e })
+          )
+        }
+        if (premiumEnabledRef.current) {
           import('../services/classification-pipeline')
             .then(({ reclassifyPendingNotes }) => reclassifyPendingNotes())
             .catch((e) => logger.error('Failed to reclassify pending notes on resume', { err: e }))
@@ -144,7 +223,38 @@ export default function RootLayout() {
     return () => {
       sub.remove()
     }
-  }, [router, initializeTheme, devAiPlanOverride])
+  }, [router, initializeTheme, initializeUpsell, initializeNotes])
+
+  useEffect(() => {
+    if (!premiumEnabled) {
+      return
+    }
+
+    PremiumCleanupNudge.schedule().catch((e) =>
+      logger.error('Failed to schedule premium cleanup nudge', { err: e })
+    )
+
+    import('../services/classification-pipeline')
+      .then(({ reclassifyPendingNotes }) => reclassifyPendingNotes())
+      .catch((e) => logger.error('Failed to reclassify pending notes', { err: e }))
+  }, [premiumEnabled, devAiPlanOverride])
+
+  function handleAiEntry() {
+    if (premiumEnabled) {
+      openAiAssistant()
+      return
+    }
+
+    if (freeAiVisible) {
+      void markAiRevealSeen()
+      setPremiumSheetVisible(true)
+    }
+  }
+
+  function handleStartPremium() {
+    setPremiumSheetVisible(false)
+    router.push('/settings')
+  }
 
   if (!fontsLoaded) {
     return null;
@@ -161,16 +271,53 @@ export default function RootLayout() {
       </ThemeProvider>
 
       {/* Global AI button — floats above all screens */}
-      {premiumEnabled && !hideAiButton ? (
+      {showAiButton ? (
         <TouchableOpacity
-          style={styles.aiButton}
-          onPress={() => setAiModalVisible(true)}
+          style={[styles.aiButton, { backgroundColor: isDark ? colors.colorFocus : colors.colorPrimary }]}
+          onPress={handleAiEntry}
           activeOpacity={0.85}
         >
           <IconSymbol 
             size={28} 
             name="circle.hexagongrid.circle" 
-            color={colorScheme === 'dark' ? colors.colorAccent : colors.colorBgMain} 
+            color={isDark ? colors.colorTextMain : colors.colorBgMain} 
+          />
+        </TouchableOpacity>
+      ) : null}
+
+      {showAiRevealTooltip ? (
+        <TouchableOpacity
+          activeOpacity={0.85}
+          onPress={handleAiEntry}
+          style={styles.aiTooltipWrap}
+        >
+          <View
+            style={[
+              styles.aiTooltipBubble,
+              {
+                backgroundColor: colors.colorBgElevated,
+                borderColor: colors.colorBorder,
+              },
+            ]}
+          >
+            <ThemedText type="defaultSemiBold">Ready to let AI organize your notes?</ThemedText>
+          </View>
+          <View
+            style={[
+              styles.aiTooltipTailShadow,
+              {
+                backgroundColor: colors.colorBgElevated,
+              },
+            ]}
+          />
+          <View
+            style={[
+              styles.aiTooltipTail,
+              {
+                backgroundColor: colors.colorBgElevated,
+                borderColor: colors.colorBorder,
+              },
+            ]}
           />
         </TouchableOpacity>
       ) : null}
@@ -178,7 +325,15 @@ export default function RootLayout() {
       {premiumEnabled && !hideAiButton ? (
         <AiAssistantModal
           visible={aiModalVisible}
-          onClose={() => setAiModalVisible(false)}
+          onClose={closeAiAssistant}
+        />
+      ) : null}
+
+      {!premiumEnabled ? (
+        <PremiumUpgradeSheet
+          visible={premiumSheetVisible}
+          onClose={() => setPremiumSheetVisible(false)}
+          onStartPremium={handleStartPremium}
         />
       ) : null}
     </GestureHandlerRootView>

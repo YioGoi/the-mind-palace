@@ -16,6 +16,8 @@ const MAPPING = {
   'house.fill': 'home',
   'apple.homekit': 'home',
   'paperplane.fill': 'send',
+  'circle': 'radio-button-unchecked',
+  'checkmark.circle.fill': 'check-circle',
   'chevron.left.forwardslash.chevron.right': 'code',
   'chevron.right': 'chevron-right',
   'gearshape.fill': 'settings',

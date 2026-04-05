@@ -1,6 +1,6 @@
 jest.mock('expo-sqlite')
-import { ContextsRepo } from '../app/db/contexts-repo'
-import { NotesRepo } from '../app/db/notes-repo'
+import { ContextsRepo } from '../lib/db/contexts-repo'
+import { NotesRepo } from '../lib/db/notes-repo'
 
 describe('Notes move UI-level test', () => {
   test('moveNoteToContext returns previous null and logs AI_FEEDBACK', async () => {

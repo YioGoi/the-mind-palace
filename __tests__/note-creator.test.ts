@@ -12,8 +12,8 @@ jest.mock('../services/classification-pipeline', () => ({
   classifyNoteAsync: jest.fn().mockResolvedValue(undefined)
 }))
 
-import { createNote } from '../app/services/note-creator'
-import { logger } from '../app/utils/logger'
+import { createNote } from '../lib/services/note-creator'
+import { logger } from '../lib/utils/logger'
 
 describe('createNote integration', () => {
   beforeEach(() => {

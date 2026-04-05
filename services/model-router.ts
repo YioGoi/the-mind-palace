@@ -1,4 +1,4 @@
-import { logger } from '../app/utils/logger'
+import { logger } from '../lib/utils/logger'
 import { getFallbackModel, getPrimaryModel } from './ai/config'
 
 // ---------------------------------------------------------------------------
@@ -105,6 +105,7 @@ export type ModelCallResult = ModelCallSuccess | ModelCallFailure
 type ChatMessage = { role: 'system' | 'user' | 'assistant'; content: string }
 
 export type ChatCompletionOptions = {
+  timeoutMs?: number
   responseFormat?: {
     type: 'json_schema'
     json_schema: {
@@ -123,7 +124,8 @@ export async function callModel(
 ): Promise<ModelCallResult> {
   const start = Date.now()
   const controller = new AbortController()
-  const timer = setTimeout(() => controller.abort(), config.timeoutMs)
+  const timeoutMs = options?.timeoutMs ?? config.timeoutMs
+  const timer = setTimeout(() => controller.abort(), timeoutMs)
 
   try {
     const res = await fetch(endpoint, {
@@ -203,7 +205,7 @@ export async function callModel(
     const isTimeout = (err as Error)?.name === 'AbortError'
     const errorType: ErrorType = isTimeout ? 'timeout' : 'unknown'
     const message = isTimeout
-      ? `Timed out after ${config.timeoutMs}ms`
+      ? `Timed out after ${timeoutMs}ms`
       : (err instanceof Error ? err.message : String(err))
 
     logger.warn(`ModelRouter ✗ [${config.label}] ${isTimeout ? 'TIMEOUT' : 'NETWORK_ERROR'}`, {

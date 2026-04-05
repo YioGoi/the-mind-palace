@@ -1,13 +1,18 @@
 import LogViewer from '@/components/log-viewer'
+import { PremiumUpgradeSheet } from '@/components/premium-upgrade-sheet'
 import { ThemedText } from '@/components/themed-text'
 import { ThemedView } from '@/components/themed-view'
-import { Palette } from '@/constants/palette'
 import { useAppTheme } from '@/hooks/use-app-theme'
+import { prepareCleanupQaDataset } from '@/lib/services/cleanup-qa-seed'
+import { PremiumCleanupNudge } from '@/lib/services/premium-cleanup-nudge'
+import { useAiUpsellStore } from '@/lib/store/ai-upsell-store'
+import { useNoteUiHintsStore } from '@/lib/store/note-ui-hints-store'
+import { ThemePreference, useThemeStore } from '@/lib/store/theme-store'
+import { getSubscriptionCta } from '@/lib/utils/settings-subscription'
 import React, { useState } from 'react'
 import { ActivityIndicator, Button, ScrollView, StyleSheet, Switch, Text, TouchableOpacity, View } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
-import { ThemePreference, useThemeStore } from '../store/theme-store'
-import { getAiGatewayUrl, getAiPlan, getPrimaryModel } from '../../services/ai/config'
+import { getAiCapabilities, getAiEntitlement, getAiGatewayUrl, getAiPlan, getPrimaryModel, hasAiUpsellMarketingEnabled } from '../../services/ai/config'
 import { ModelCallResult, runDiagnostics } from '../../services/model-router'
 
 export default function SettingsScreen() {
@@ -18,9 +23,16 @@ export default function SettingsScreen() {
   const setBackgroundAnimationEnabled = useThemeStore(state => state.setBackgroundAnimationEnabled)
   const devAiPlanOverride = useThemeStore(state => state.devAiPlanOverride)
   const setDevAiPlanOverride = useThemeStore(state => state.setDevAiPlanOverride)
+  const resetUpsellForDev = useAiUpsellStore(state => state.resetForDev)
+  const resetDoneActionHintForDev = useNoteUiHintsStore(state => state.resetDoneActionHintForDev)
+  const entitlement = getAiEntitlement()
+  const subscriptionCta = getSubscriptionCta(entitlement.hasPremiumAccess)
+  const aiCapabilities = getAiCapabilities()
+  const aiUpsellMarketingEnabled = hasAiUpsellMarketingEnabled()
   const [showLogs, setShowLogs] = useState(false)
   const [diagRunning, setDiagRunning] = useState(false)
   const [diagResults, setDiagResults] = useState<ModelCallResult[] | null>(null)
+  const [premiumSheetVisible, setPremiumSheetVisible] = useState(false)
 
   async function handleRunDiagnostics() {
     const endpoint = getAiGatewayUrl()
@@ -93,10 +105,48 @@ export default function SettingsScreen() {
         </ThemedView>
 
         <ThemedView style={styles.section}>
+          <ThemedText type="subtitle">Subscription</ThemedText>
+          <View style={[styles.settingRow, { borderTopColor: 'transparent', marginTop: 8, paddingTop: 0 }]}>
+            <View style={styles.settingCopy}>
+              <ThemedText type="defaultSemiBold">
+                {subscriptionCta.title}
+              </ThemedText>
+              <ThemedText>
+                {subscriptionCta.description}
+              </ThemedText>
+            </View>
+            <TouchableOpacity
+              style={[styles.subscriptionButton, { backgroundColor: colors.colorPrimary }]}
+              onPress={() => setPremiumSheetVisible(true)}
+              activeOpacity={0.85}
+            >
+              <Text style={[styles.subscriptionButtonText, { color: colors.colorBgMain }]}>
+                {subscriptionCta.actionLabel}
+              </Text>
+            </TouchableOpacity>
+          </View>
+        </ThemedView>
+
+        <ThemedView style={styles.section}>
           <ThemedText type="subtitle">AI setup</ThemedText>
           <ThemedText>Plan: {getAiPlan()}</ThemedText>
+          <ThemedText>Access channel: {entitlement.channel}</ThemedText>
+          <ThemedText>Premium access: {entitlement.hasPremiumAccess ? 'enabled' : 'disabled'}</ThemedText>
+          <ThemedText>Upsell marketing: {aiUpsellMarketingEnabled ? 'enabled' : 'disabled'}</ThemedText>
+          <ThemedText>Auto-classify: {aiCapabilities.canAutoClassifyNotes ? 'enabled' : 'disabled'}</ThemedText>
+          <ThemedText>Assistant planner: {aiCapabilities.canUseAssistantPlanner ? 'enabled' : 'fallback note capture'}</ThemedText>
           <ThemedText>Model: {getPrimaryModel()}</ThemedText>
           <ThemedText>Gateway: {getAiGatewayUrl() ?? 'Not configured'}</ThemedText>
+          {!__DEV__ ? (
+            <View style={[styles.settingRow, { borderTopColor: colors.colorBorder }]}>
+              <View style={styles.settingCopy}>
+                <ThemedText type="defaultSemiBold">Premium AI</ThemedText>
+                <ThemedText>
+                  Natural-language capture, context suggestion, and faster planning for $2.99 / month.
+                </ThemedText>
+              </View>
+            </View>
+          ) : null}
           {__DEV__ ? (
             <View style={[styles.settingRow, { borderTopColor: colors.colorBorder }]}>
               <View style={styles.settingCopy}>
@@ -108,14 +158,29 @@ export default function SettingsScreen() {
                   style={[
                     styles.devPlanOption,
                     {
-                      backgroundColor: (devAiPlanOverride ?? getAiPlan()) === 'free' ? colors.colorPrimary : colors.colorBgMuted,
-                      borderColor: (devAiPlanOverride ?? getAiPlan()) === 'free' ? colors.colorPrimary : colors.colorBorder,
+                      backgroundColor: devAiPlanOverride === null ? colors.colorPrimary : colors.colorBgMuted,
+                      borderColor: devAiPlanOverride === null ? colors.colorPrimary : colors.colorBorder,
+                    },
+                  ]}
+                  onPress={() => setDevAiPlanOverride(null)}
+                  activeOpacity={0.8}
+                >
+                  <Text style={[styles.devPlanText, { color: devAiPlanOverride === null ? colors.colorPrimarySoft : colors.colorTextMain }]}>
+                    Env
+                  </Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[
+                    styles.devPlanOption,
+                    {
+                      backgroundColor: devAiPlanOverride === 'free' ? colors.colorPrimary : colors.colorBgMuted,
+                      borderColor: devAiPlanOverride === 'free' ? colors.colorPrimary : colors.colorBorder,
                     },
                   ]}
                   onPress={() => setDevAiPlanOverride('free')}
                   activeOpacity={0.8}
                 >
-                  <Text style={[styles.devPlanText, { color: (devAiPlanOverride ?? getAiPlan()) === 'free' ? '#fff' : colors.colorTextMain }]}>
+                  <Text style={[styles.devPlanText, { color: devAiPlanOverride === 'free' ? colors.colorPrimarySoft : colors.colorTextMain }]}>
                     Free
                   </Text>
                 </TouchableOpacity>
@@ -123,14 +188,14 @@ export default function SettingsScreen() {
                   style={[
                     styles.devPlanOption,
                     {
-                      backgroundColor: (devAiPlanOverride ?? getAiPlan()) === 'premium' ? colors.colorPrimary : colors.colorBgMuted,
-                      borderColor: (devAiPlanOverride ?? getAiPlan()) === 'premium' ? colors.colorPrimary : colors.colorBorder,
+                      backgroundColor: devAiPlanOverride === 'premium' ? colors.colorPrimary : colors.colorBgMuted,
+                      borderColor: devAiPlanOverride === 'premium' ? colors.colorPrimary : colors.colorBorder,
                     },
                   ]}
                   onPress={() => setDevAiPlanOverride('premium')}
                   activeOpacity={0.8}
                 >
-                  <Text style={[styles.devPlanText, { color: (devAiPlanOverride ?? getAiPlan()) === 'premium' ? '#fff' : colors.colorTextMain }]}>
+                  <Text style={[styles.devPlanText, { color: devAiPlanOverride === 'premium' ? colors.colorPrimarySoft : colors.colorTextMain }]}>
                     Premium
                   </Text>
                 </TouchableOpacity>
@@ -139,14 +204,63 @@ export default function SettingsScreen() {
           ) : null}
         </ThemedView>
 
-        <ThemedView style={styles.section}>
-          <ThemedText type="subtitle">Local data</ThemedText>
-          <ThemedText>
-            {'🔒 '}All notes are stored locally on your device and are not uploaded anywhere. If you
-            uninstall the app, this data will be removed from the device and cannot be recovered
-            unless you have previously exported or backed up your device.
-          </ThemedText>
-        </ThemedView>
+        {__DEV__ ? (
+          <ThemedView style={styles.section}>
+            <ThemedText type="subtitle">QA resets</ThemedText>
+            <ThemedText>Re-run tooltip and upsell onboarding without clearing all local notes.</ThemedText>
+            <View style={styles.debugButtonStack}>
+              <TouchableOpacity
+                style={[styles.debugResetButton, { backgroundColor: colors.colorBgMuted, borderColor: colors.colorBorder }]}
+                onPress={() => void resetDoneActionHintForDev()}
+                activeOpacity={0.8}
+              >
+                <Text style={[styles.debugResetButtonText, { color: colors.colorTextMain }]}>Reset done tooltip</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.debugResetButton, { backgroundColor: colors.colorBgMuted, borderColor: colors.colorBorder }]}
+                onPress={() => void resetUpsellForDev()}
+                activeOpacity={0.8}
+              >
+                <Text style={[styles.debugResetButtonText, { color: colors.colorTextMain }]}>Reset AI upsell milestones</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.debugResetButton, { backgroundColor: colors.colorBgMuted, borderColor: colors.colorBorder }]}
+                onPress={() => void PremiumCleanupNudge.resetForDev()}
+                activeOpacity={0.8}
+              >
+                <Text style={[styles.debugResetButtonText, { color: colors.colorTextMain }]}>Clear cleanup nudge test state</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.debugResetButton, { backgroundColor: colors.colorBgMuted, borderColor: colors.colorBorder }]}
+                onPress={() => void PremiumCleanupNudge.scheduleSoonForDev()}
+                activeOpacity={0.8}
+              >
+                <Text style={[styles.debugResetButtonText, { color: colors.colorTextMain }]}>Schedule cleanup nudge in 30 sec</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.debugResetButton, { backgroundColor: colors.colorBgMuted, borderColor: colors.colorBorder }]}
+                onPress={() => void PremiumCleanupNudge.scheduleAfterDelayForDev(5000)}
+                activeOpacity={0.8}
+              >
+                <Text style={[styles.debugResetButtonText, { color: colors.colorTextMain }]}>Schedule cleanup nudge in 5 sec</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.debugResetButton, { backgroundColor: colors.colorBgMuted, borderColor: colors.colorBorder }]}
+                onPress={() => void prepareCleanupQaDataset()}
+                activeOpacity={0.8}
+              >
+                <Text style={[styles.debugResetButtonText, { color: colors.colorTextMain }]}>Prepare cleanup QA dataset</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.debugResetButton, { backgroundColor: colors.colorBgMuted, borderColor: colors.colorBorder }]}
+                onPress={() => setPremiumSheetVisible(true)}
+                activeOpacity={0.8}
+              >
+                <Text style={[styles.debugResetButtonText, { color: colors.colorTextMain }]}>Open premium sheet</Text>
+              </TouchableOpacity>
+            </View>
+          </ThemedView>
+        ) : null}
 
         {__DEV__ ? (
           <View style={{ gap: 8, marginTop: 8 }}>
@@ -196,8 +310,15 @@ export default function SettingsScreen() {
           </View>
         ) : null}
 
-        <LogViewer visible={showLogs} onClose={() => setShowLogs(false)} />
+        {__DEV__ && (
+          <LogViewer visible={showLogs} onClose={() => setShowLogs(false)} />
+        )}
       </ScrollView>
+      <PremiumUpgradeSheet
+        visible={premiumSheetVisible}
+        onClose={() => setPremiumSheetVisible(false)}
+        onStartPremium={() => setPremiumSheetVisible(false)}
+      />
     </SafeAreaView>
   )
 }
@@ -218,7 +339,7 @@ const styles = StyleSheet.create({
     marginTop: 12,
   },
   settingRow: {
-    flexDirection: 'row',
+    flexDirection: 'column',
     alignItems: 'center',
     justifyContent: 'space-between',
     gap: 16,
@@ -229,6 +350,17 @@ const styles = StyleSheet.create({
   settingCopy: {
     flex: 1,
     gap: 4,
+  },
+  subscriptionButton: {
+    borderRadius: 999,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  subscriptionButtonText: {
+    fontSize: 14,
+    fontWeight: '700',
   },
   themeOption: {
     flex: 1,
@@ -243,7 +375,6 @@ const styles = StyleSheet.create({
     fontSize: 14,
   },
   diagButton: {
-    backgroundColor: Palette.colorPrimary,
     borderRadius: 8,
     padding: 12,
     alignItems: 'center',
@@ -255,7 +386,6 @@ const styles = StyleSheet.create({
   },
   diagResults: {
     borderWidth: 1,
-    borderColor: Palette.colorBorder,
     borderRadius: 8,
     padding: 12,
     gap: 8,
@@ -264,7 +394,6 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     fontSize: 13,
     marginBottom: 4,
-    color: Palette.colorTextSecondary,
   },
   diagRow: {
     flexDirection: 'row',
@@ -291,5 +420,19 @@ const styles = StyleSheet.create({
   devPlanText: {
     fontWeight: '700',
     fontSize: 13,
+  },
+  debugButtonStack: {
+    marginTop: 14,
+    gap: 10,
+  },
+  debugResetButton: {
+    borderWidth: 1,
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+  },
+  debugResetButtonText: {
+    fontWeight: '700',
+    fontSize: 14,
   },
 })

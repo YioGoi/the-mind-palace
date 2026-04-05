@@ -1,4 +1,4 @@
-import { logger } from '../app/utils/logger'
+import { logger } from '../lib/utils/logger'
 
 describe('logger buffer', () => {
   beforeEach(() => {

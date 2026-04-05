@@ -1,6 +1,13 @@
 import * as Notifications from 'expo-notifications'
 import { logger } from '../utils/logger'
 
+export type AppNotificationData = {
+  type?: 'open_note' | 'ai_cleanup_nudge'
+  noteId?: string
+  category?: 'HAVE' | 'URGENT' | 'NICE'
+  prefill?: string
+}
+
 export async function requestPermissions() {
   const { status } = await Notifications.requestPermissionsAsync()
   logger.info('Notification permission status', { status })
@@ -8,7 +15,7 @@ export async function requestPermissions() {
 }
 
 export async function scheduleNotification(
-  content: { title: string; body?: string },
+  content: { title: string; body?: string; data?: AppNotificationData },
   trigger: { date: number } | Notifications.NotificationTriggerInput
 ) {
   logger.debug('Scheduling notification', { content, trigger })
@@ -21,9 +28,14 @@ export async function scheduleNotification(
     triggerArg = trigger as Notifications.NotificationTriggerInput
   }
 
-  const id = await Notifications.scheduleNotificationAsync({ content, trigger: triggerArg })
-  logger.info('Scheduled notification', { id, triggerDate: triggerArg })
-  return id
+  try {
+    const id = await Notifications.scheduleNotificationAsync({ content, trigger: triggerArg })
+    logger.info('Scheduled notification', { id, triggerDate: triggerArg })
+    return id
+  } catch (err) {
+    logger.error('Schedule notification failed', { err, content, trigger: triggerArg })
+    throw err
+  }
 }
 
 export async function cancelNotification(notificationId: string) {

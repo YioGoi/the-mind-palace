@@ -1,206 +1,57 @@
+import React from 'react'
+import { ActivityIndicator, SectionList, StyleSheet, Text, View } from 'react-native'
+import { SafeAreaView } from 'react-native-safe-area-context'
+import { useAppTheme } from '@/hooks/use-app-theme'
+import { useCategoryNotesScreen } from '@/hooks/use-category-notes-screen'
+import { CategorySectionHeader } from '@/components/category-section-header'
+import { isPlaceholderSectionItem } from '@/lib/utils/category-sections'
 import NewNoteModal from '@/components/new-note-modal'
 import NoteCard from '@/components/note-card'
 import NoteDetailModal from '@/components/note-detail-modal'
 import Fab from '@/components/ui/fab'
-import { IconSymbol } from '@/components/ui/icon-symbol'
 import QuickActionSheet from '@/components/ui/quick-action-sheet'
-import { Palette } from '@/constants/palette'
-import { useAppTheme } from '@/hooks/use-app-theme'
-import React, { useEffect, useRef, useState } from 'react'
-import { ActivityIndicator, Alert, SectionList, StyleSheet, Text, TouchableOpacity, View } from 'react-native'
-import { SafeAreaView } from 'react-native-safe-area-context'
-import { NotesRepo } from '../db/notes-repo'
-import { NotificationManager } from '../services/notification-manager'
-import type { Context, Note } from '../store/notes-store'
-import { useNotesStore } from '../store/notes-store'
-import { logger } from '../utils/logger'
 
 export default function HaveScreen() {
   const { colors } = useAppTheme()
-  const CATEGORY = 'HAVE'
-
-  // Use Zustand store - subscribe to arrays directly (Zustand handles re-renders)
-  const allNotes = useNotesStore(state => state.notes) as Note[]
-  const allContexts = useNotesStore(state => state.contexts) as Context[]
-  const loadNotes = useNotesStore(state => state.loadNotes)
-
-  const [sheetVisible, setSheetVisible] = useState(false)
-  const [selectedNoteId, setSelectedNoteId] = useState<string | null>(null)
-  const [newNoteOpen, setNewNoteOpen] = useState(false)
-  const [detailModalOpen, setDetailModalOpen] = useState(false)
-  const [loading, setLoading] = useState(true)
-  const [collapsedSections, setCollapsedSections] = useState<Record<string, boolean>>({})
-
-  // Track previous notes to detect newly classified ones
-  const prevNotesRef = useRef<Note[]>([])
-  const isInitialLoadRef = useRef(true)
-
-  // Filter for this category
-  const notes = React.useMemo(() => allNotes.filter(n => n.category === CATEGORY), [allNotes, CATEGORY])
-  const contexts = React.useMemo(() => allContexts.filter(c => c.category === CATEGORY), [allContexts, CATEGORY])
-
-  useEffect(() => {
-    async function initAndLoad() {
-      setLoading(true)
-      try {
-        await Promise.all([
-          NotesRepo.init(),
-          (await import('../db/contexts-repo')).ContextsRepo.init()
-        ])
-        await loadNotes(CATEGORY)
-      } catch (err) {
-        logger.error('Failed to init/load notes or contexts', { err })
-        Alert.alert('Error', 'Failed to load notes or contexts')
-      } finally {
-        setLoading(false)
-        isInitialLoadRef.current = false
-      }
-    }
-    initAndLoad()
-  }, [])
-
-  // Auto-collapse new sections (guard against infinite loop)
-  useEffect(() => {
-    if (loading) return // Don't set collapsed state until data is loaded
-    // Only update collapsedSections if new context IDs are present
-    setCollapsedSections(prev => {
-      const next = { ...prev }
-      let changed = false
-      for (const c of contexts) {
-        if (!(c.id in next)) {
-          next[c.id] = true
-          changed = true
-        }
-      }
-      if (!('unsorted' in next)) {
-        next['unsorted'] = true
-        changed = true
-      }
-      if (!('__classifying' in next)) {
-        next['__classifying'] = false // Keep classifying open
-        changed = true
-      }
-      // Only return new object if changed, else return prev to avoid unnecessary re-renders
-      return changed ? next : prev
-    })
-  }, [contexts, loading])
-
-  // Auto-expand sections when notes are added to them
-  useEffect(() => {
-    // Skip auto-expand on initial load
-    if (isInitialLoadRef.current) {
-      prevNotesRef.current = notes
-      return
-    }
-
-    // Find notes that were just classified (were pending before, now assigned)
-    const prevNotes = prevNotesRef.current
-    const newlyClassified = notes.filter(note => {
-      if (note.classificationStatus !== 'assigned' || !note.contextId) return false
-
-      const prevNote = prevNotes.find(n => n.id === note.id)
-      // New note or status changed from pending to assigned
-      return !prevNote || prevNote.classificationStatus === 'pending'
-    })
-
-    if (newlyClassified.length > 0) {
-      setCollapsedSections(prev => {
-        const next = { ...prev }
-        newlyClassified.forEach(note => {
-          if (note.contextId) {
-            next[note.contextId] = false // Expand only the newly assigned section
-          }
-        })
-        return next
-      })
-    }
-
-    // Update ref for next comparison
-    prevNotesRef.current = notes
-  }, [notes])
-
-  async function onSelectContext(contextId: string) {
-    if (!selectedNoteId) return
-    const previous = await NotesRepo.moveNoteToContext(selectedNoteId, contextId)
-    Alert.alert('Moved', `Note moved (${selectedNoteId}) from ${previous ?? 'none'} to ${contextId}`)
-    setSheetVisible(false)
-    setSelectedNoteId(null)
-    // Refresh store data
-    await loadNotes(CATEGORY)
-  }
-
-  async function handleDelete(noteId: string) {
-    Alert.alert(
-      'Delete Note',
-      'Are you sure you want to delete this note?',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Delete',
-          style: 'destructive',
-          onPress: async () => {
-            try {
-              // Cancel any reminders first
-              await NotificationManager.cancelAllReminders(noteId)
-              await NotesRepo.deleteNote(noteId)
-              await loadNotes(CATEGORY)
-            } catch (error) {
-              logger.error('Failed to delete note', { error: error as any })
-              Alert.alert('Error', 'Failed to delete note')
-            }
-          },
-        },
-      ]
-    )
-  }
-
-  const sections = React.useMemo(() => {
-    // contexts is already filtered for CATEGORY
-    const mapped = contexts.map((c) => ({ title: c.name, id: c.id, data: notes.filter((n) => n.contextId === c.id) }))
-
-    // Pending notes (being classified by AI)
-    const pending = notes.filter((n) => n.classificationStatus === 'pending')
-
-    const result = [] as Array<{ title: string; id: string; data: any[] }>
-
-    // Show pending notes at the top while AI is working
-    if (pending.length) {
-      result.push({ title: '🤖 Classifying...', id: '__classifying', data: pending })
-    }
-
-    // Unassigned notes (classification failed or no context assigned)
-    const unassigned = notes.filter((n) => !n.contextId && n.classificationStatus !== 'pending')
-    if (unassigned.length) result.push({ title: 'Unsorted', id: 'unsorted', data: unassigned })
-
-    // ALWAYS include contexts for the category so headers (accordions) are visible even when empty
-    for (const s of mapped) result.push(s)
-    return result
-  }, [notes, contexts, CATEGORY])
-
-  const toggleSection = (id: string) => setCollapsedSections((prev) => ({ ...prev, [id]: !prev[id] }))
-
-  const displaySections = React.useMemo(
-    () =>
-      sections.map((s) => ({
-        ...s,
-        data: collapsedSections[s.id]
-          ? [{ __placeholder: true, id: `${s.id}-placeholder` }]
-          : s.data,
-      })),
-    [sections, collapsedSections]
-  )
-
-  const sectionCounts = React.useMemo(() => {
-    const m: Record<string, number> = {}
-    for (const s of sections) m[s.id] = s.data.length
-    return m
-  }, [sections])
+  const {
+    collapsedSections,
+    contexts,
+    detailModalOpen,
+    displaySections,
+    doneActionHintHydrated,
+    doneHintNoteId,
+    dismissDoneActionHint,
+    dismissDoneHint,
+    editingContextId,
+    editingContextName,
+    firstUndoneNoteId,
+    handleDelete,
+    handleEditContext,
+    handleMarkDone,
+    handleUpdateContext,
+    hasSeenDoneActionHint,
+    isEditableSection,
+    loading,
+    newNoteOpen,
+    onSelectContext,
+    refreshNotes,
+    sectionCounts,
+    selectedNoteId,
+    setDetailModalOpen,
+    setEditingContextName,
+    setNewNoteOpen,
+    setSelectedNoteId,
+    setSheetVisible,
+    sheetVisible,
+    shouldShowDoneHint,
+    toggleSection,
+  } = useCategoryNotesScreen('HAVE')
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: 'transparent' }]}>
       {loading ? (
         <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color={Palette.colorSuccess} />
+          <ActivityIndicator size="large" color={colors.colorSuccess} />
         </View>
       ) : (
         <>
@@ -209,16 +60,27 @@ export default function HaveScreen() {
             stickySectionHeadersEnabled={false}
             contentContainerStyle={{ paddingTop: 24, paddingBottom: 100 }}
             style={styles.sectionList}
-            showsVerticalScrollIndicator={true}
+            showsVerticalScrollIndicator
             keyExtractor={(item: any) => item.id}
             renderItem={({ item, section }) => {
-              if ((item as any).__placeholder) return null
+              if (isPlaceholderSectionItem(item)) return null
+
               return (
                 <NoteCard
                   id={item.id}
                   title={item.title}
                   subtitle={section?.title}
-                  reminderAt={item.reminderAt}
+                  reminderAt={item.reminderAt ?? undefined}
+                  done={item.status === 'DONE'}
+                  showDoneHint={
+                    doneActionHintHydrated &&
+                    !hasSeenDoneActionHint &&
+                    item.status !== 'DONE' &&
+                    item.id === firstUndoneNoteId
+                  }
+                  onDismissDoneHint={() => {
+                    void dismissDoneActionHint()
+                  }}
                   onPress={() => {
                     setSelectedNoteId(item.id)
                     setDetailModalOpen(true)
@@ -227,10 +89,16 @@ export default function HaveScreen() {
                     setSelectedNoteId(item.id)
                     setSheetVisible(true)
                   }}
+                  onToggleDone={() => handleMarkDone(item.id)}
                   swipeActions={[
                     {
+                      text: 'Done',
+                      backgroundColor: colors.colorSuccess,
+                      onPress: () => handleMarkDone(item.id),
+                    },
+                    {
                       text: 'Delete',
-                      backgroundColor: Palette.colorDanger,
+                      backgroundColor: colors.colorDanger,
                       onPress: () => handleDelete(item.id),
                     },
                   ]}
@@ -238,26 +106,37 @@ export default function HaveScreen() {
               )
             }}
             renderSectionHeader={({ section }) => {
-              const hasPending = section.data.some((n: any) => n.classificationStatus === 'pending')
+              const hasPending = section.data.some((note: any) => note.classificationStatus === 'pending')
+              const isEditingSection = section.id === editingContextId
+
               return (
-                <TouchableOpacity
-                  style={[styles.sectionHeader, { backgroundColor: colors.colorBgMuted, borderBottomColor: colors.colorBorder }]}
-                  onPress={() => toggleSection(section.id)}
-                  activeOpacity={0.7}
-                  testID={`section-header-${section.id}`}
-                >
-                  <Text style={[styles.sectionTitle, { color: colors.colorSuccess }]}>
-                    {section.title}
-                    {hasPending ? (
-                      <View style={{ marginLeft: 8, transform: [{ translateY: 2 }] }}>
-                        <ActivityIndicator size="small" color={Palette.colorSuccess} />
-                      </View>
-                    ) : sectionCounts[section.id] ? (
-                      <Text style={[styles.sectionCount, { color: colors.colorSuccess }]}> ({sectionCounts[section.id]})</Text>
-                    ) : null}
-                  </Text>
-                  <IconSymbol name="chevron.right" size={22} color={Palette.colorSuccess} style={{ transform: [{ rotate: collapsedSections[section.id] ? '0deg' : '90deg' }] }} />
-                </TouchableOpacity>
+                <CategorySectionHeader
+                  borderColor={colors.colorBorder}
+                  collapsed={!!collapsedSections[section.id]}
+                  count={sectionCounts[section.id] ?? 0}
+                  hasPending={hasPending}
+                  iconColor={colors.colorSuccess}
+                  inputColor={colors.colorPrimary}
+                  isEditable={isEditableSection(section.id)}
+                  isEditing={isEditingSection}
+                  onChangeEditingName={setEditingContextName}
+                  onCommitEdit={async () => {
+                    if (editingContextId) {
+                      await handleUpdateContext(editingContextId, editingContextName)
+                    }
+                  }}
+                  onStartEdit={() => handleEditContext({ id: section.id, title: section.title })}
+                  onToggle={() => {
+                    if (!isEditingSection) {
+                      toggleSection(section.id)
+                    }
+                  }}
+                  sectionBackgroundColor={colors.colorBgMuted}
+                  sectionId={section.id}
+                  testIDBase={`section-header-${section.id}`}
+                  title={isEditingSection ? editingContextName : section.title}
+                  titleColor={colors.colorSuccess}
+                />
               )
             }}
             ListEmptyComponent={<Text style={{ padding: 12, color: colors.colorTextMuted }}>No notes</Text>}
@@ -273,24 +152,23 @@ export default function HaveScreen() {
           <NoteDetailModal
             visible={detailModalOpen}
             noteId={selectedNoteId}
+            showDoneHint={shouldShowDoneHint && doneHintNoteId === selectedNoteId}
+            onDismissDoneHint={dismissDoneHint}
             onClose={() => {
               setDetailModalOpen(false)
               setSelectedNoteId(null)
             }}
-            onUpdate={async () => await loadNotes(CATEGORY)}
+            onUpdate={refreshNotes}
           />
 
           <NewNoteModal
             visible={!!newNoteOpen}
             category="HAVE"
             onClose={() => setNewNoteOpen(false)}
-            onCreated={() => {
-              // Note is already in store from createNote, just close modal
-              setNewNoteOpen(false)
-            }}
+            onCreated={() => setNewNoteOpen(false)}
           />
 
-          <Fab testID="fab-have" onPress={() => setNewNoteOpen(true)} color={Palette.colorSuccess} />
+          <Fab testID="fab-have" onPress={() => setNewNoteOpen(true)} color={colors.colorSuccess} />
         </>
       )}
     </SafeAreaView>
@@ -301,8 +179,4 @@ const styles = StyleSheet.create({
   container: { flex: 1, marginTop: 50 },
   loadingContainer: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   sectionList: { flex: 1 },
-  sectionHeader: { padding: 12, borderBottomWidth: 1, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  sectionTitle: { fontSize: 16, fontWeight: '700' },
-  sectionCount: { fontSize: 14, opacity: 0.85 },
-  sectionIndicator: { fontSize: 18, color: Palette.colorSuccess },
 })

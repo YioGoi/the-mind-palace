@@ -1,9 +1,9 @@
 jest.mock('expo-notifications')
 jest.mock('expo-crypto')
-import { NotificationRepo } from '../app/db/notification-repo'
-import { NotesRepo } from '../app/db/notes-repo'
-import { ExpoNotifications } from '../app/services/notifications'
-import { NotificationManager } from '../app/services/notification-manager'
+import { NotificationRepo } from '../lib/db/notification-repo'
+import { NotesRepo } from '../lib/db/notes-repo'
+import { ExpoNotifications } from '../lib/services/notifications'
+import { NotificationManager } from '../lib/services/notification-manager'
 
 const now = Date.now()
 

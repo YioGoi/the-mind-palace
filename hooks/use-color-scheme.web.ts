@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useColorScheme as useRNColorScheme } from 'react-native';
-import { useThemeStore } from '@/app/store/theme-store'
+import { useThemeStore } from '@/lib/store/theme-store'
 
 /**
  * To support static rendering, this value needs to be re-calculated on the client side for web

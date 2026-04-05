@@ -205,6 +205,19 @@ export const NotesRepo = {
       throw err
     }
   },
+  async updateContent(noteId: string, title: string, body: string | null): Promise<void> {
+    try {
+      const db = getDb()
+      await db.runAsync(
+        `UPDATE notes SET title = ?, body = ?, updatedAt = ? WHERE id = ?`,
+        [title, body, Date.now(), noteId]
+      )
+      logger.info('Note content updated', { noteId })
+    } catch (err) {
+      logger.error('Update note content failed', { noteId, err })
+      throw err
+    }
+  },
   async updateStatus(noteId: string, status: 'PENDING' | 'DONE' | 'EXPIRED'): Promise<void> {
     try {
       const db = getDb()

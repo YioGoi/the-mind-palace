@@ -10,6 +10,8 @@ RULES:
 - Never change the note's category.
 - Only assign to a context if the note's topic/theme CLEARLY matches that context.
 - Be CONSERVATIVE: If the note's topic is different from existing contexts, propose a NEW context.
+- Treat very short or ambiguous notes carefully. A one-word title is not enough reason to force a weak match.
+- The provided contexts already belong to the same category as the note. Never infer or invent a cross-category assignment.
 - Context names should be specific and descriptive (e.g., "Real Estate", "Financial Deadlines", "Car Maintenance").
 - Avoid generic contexts - be specific about what the context represents.
 
@@ -23,6 +25,7 @@ EXAMPLES:
 - "House selling" note → if "Real Estate" context exists, assign to it. If not, propose "Real Estate" or "Property Sales".
 - "Pay iPhone bill" note → if "Bills & Payments" exists, assign. If not, propose "Bills & Payments" or "Monthly Expenses".
 - "Car insurance renewal" → propose "Auto/Insurance" if no relevant context exists.
+- "İş" with no clearly matching context → propose a new context like "Work" instead of forcing a weak match.
 
 OUTPUT FORMAT:
 If an existing context fits:

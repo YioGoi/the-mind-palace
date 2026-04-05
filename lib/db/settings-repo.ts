@@ -48,4 +48,15 @@ export const SettingsRepo = {
       throw err
     }
   },
+
+  async delete(key: string): Promise<void> {
+    try {
+      const db = getDb()
+      await db.runAsync(`DELETE FROM ${TABLE} WHERE key = ?`, [key])
+      logger.info('Setting deleted', { key })
+    } catch (err) {
+      logger.error('SettingsRepo delete failed', { key, err })
+      throw err
+    }
+  },
 }

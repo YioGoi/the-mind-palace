@@ -6,9 +6,12 @@ const MS = {
   hour: 60 * 60 * 1000,
 }
 
+const MIN_NOTIFICATION_LEAD_MS = 1000
+const MAX_URGENT_NOTIFICATIONS_DEV = 12
+
 /**
  * Determine repeat interval based on remaining time until dueDate
- * Production: > 48h → 6h, 48-12h → 2h, < 12h → 30m
+ * Production: > 48h → 12h, 48-12h → 6h, < 12h → 3h
  * Dev mode: > 48h → 6s, 48-12h → 2s, < 12h → 30s
  */
 export function getRepeatIntervalMs(
@@ -18,7 +21,7 @@ export function getRepeatIntervalMs(
 ): number {
   const endpoints = isDev
     ? { max: 1 * MS.minute, mid: 1 * MS.minute, min: 1 * MS.minute }
-    : { max: 6 * MS.hour, mid: 2 * MS.hour, min: 30 * MS.minute }
+    : { max: 12 * MS.hour, mid: 6 * MS.hour, min: 3 * MS.hour }
 
   logger.debug('getRepeatIntervalMs called', { remainingMs, isDev, useRatio, endpoints })
 
@@ -74,7 +77,7 @@ export function generateUrgentSchedule(
     isDev,
   })
 
-  const start = Math.max(initialAlarmAtMs, nowMs)
+  const start = Math.max(initialAlarmAtMs, nowMs + MIN_NOTIFICATION_LEAD_MS)
   const end = Math.min(dueDateMs, nowMs + windowMs)
 
   logger.debug('Urgent schedule window', { start, end })
@@ -85,9 +88,10 @@ export function generateUrgentSchedule(
   }
 
   const schedules: number[] = []
+  const maxNotifications = isDev ? MAX_URGENT_NOTIFICATIONS_DEV : Number.POSITIVE_INFINITY
   let t = start
   let last = -1
-  while (t <= end) {
+  while (t <= end && schedules.length < maxNotifications) {
     if (t === last) break // safety
     logger.debug('Urgent schedule loop', { t, last, end })
     schedules.push(t)
@@ -96,6 +100,15 @@ export function generateUrgentSchedule(
     const interval = getRepeatIntervalMs(remaining, isDev)
     logger.debug('Urgent schedule interval', { t, remaining, interval })
     t = t + interval
+  }
+
+  if (isDev && t <= end) {
+    logger.info('Capped dev urgent schedules', {
+      maxNotifications,
+      start,
+      end,
+      nextUnscheduledAt: t,
+    })
   }
 
   logger.info('Generated schedules', { count: schedules.length, schedules: schedules.slice(0, 5) })

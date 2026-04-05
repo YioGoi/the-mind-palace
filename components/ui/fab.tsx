@@ -1,4 +1,4 @@
-import { Palette } from '@/constants/palette'
+import { useAppTheme } from '@/hooks/use-app-theme'
 import React from 'react'
 import { Pressable, StyleSheet, Text, View, ViewStyle } from 'react-native'
 
@@ -10,10 +10,11 @@ type Props = {
 }
 
 export const Fab: React.FC<Props> = ({ onPress, testID, style, color }) => {
+  const { colors } = useAppTheme()
   return (
     <Pressable style={[styles.wrapper, style]} onPress={onPress} testID={testID}>
-      <View style={[styles.button, color ? { backgroundColor: color } : undefined]}>
-        <Text style={styles.plus}>+</Text>
+      <View style={[styles.button, { backgroundColor: color ?? colors.colorPrimary }]}>
+        <Text style={[styles.plus, { color: colors.colorBgMain }]}>+</Text>
       </View>
     </Pressable>
   )
@@ -30,7 +31,6 @@ const styles = StyleSheet.create({
     width: 64,
     height: 64,
     borderRadius: 32,
-    backgroundColor: Palette.colorPrimary,
     alignItems: 'center',
     justifyContent: 'center',
     shadowColor: '#000',
@@ -40,7 +40,6 @@ const styles = StyleSheet.create({
     elevation: 6,
   },
   plus: {
-    color: '#fff',
     fontSize: 36,
     lineHeight: 36,
     fontWeight: '600',

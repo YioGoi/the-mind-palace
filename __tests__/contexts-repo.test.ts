@@ -1,4 +1,4 @@
-import { ContextsRepo } from '../app/db/contexts-repo'
+import { ContextsRepo } from '../lib/db/contexts-repo'
 
 describe('ContextsRepo basic', () => {
   test('init -> create -> list', async () => {

@@ -24,7 +24,9 @@ function createDb() {
     const m = sql.match(/CREATE TABLE IF NOT EXISTS\s+(\w+) \(([^)]+)\)/i)
     if (m) {
       const name = m[1]
-      tables[name] = { rows: [] }
+      if (!tables[name]) {
+        tables[name] = { rows: [] }
+      }
       return Promise.resolve()
     }
     return Promise.resolve()

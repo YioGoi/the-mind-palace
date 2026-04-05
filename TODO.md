@@ -20,6 +20,11 @@ Project TODOs (short-term, actionable)
 5. Tests
 - [ ] Add integration tests for note+context flows
 
+6. Release checklist
+- [ ] Debug log cleanup before release / TestFlight
+- [ ] Remove DEV plan override implementation before release
+- [ ] Re-test free/premium gating, Home teaser reveal, and upsell thresholds after removing DEV plan override
+
 Reminders:
 - Review the above list during your next session. To view this file run: `pnpm run todo`.
 - **Reminder task:** Check TODO list at start of next sprint and verify `Contexts` and `Repo init` items.

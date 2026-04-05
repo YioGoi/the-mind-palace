@@ -10,6 +10,19 @@ export type ScheduledNotification = {
   createdAt: number
 }
 
+let initPromise: Promise<void> | null = null
+
+async function ensureRepoReady() {
+  if (!initPromise) {
+    initPromise = initRepo().catch((err) => {
+      initPromise = null
+      throw err
+    })
+  }
+
+  await initPromise
+}
+
 export async function initRepo() {
   await ensureWritableDatabase()
   try {
@@ -37,6 +50,7 @@ export async function saveScheduled(noteId: string, notificationId: string, trig
   const id = Crypto.randomUUID()
   const now = Date.now()
   try {
+    await ensureRepoReady()
     const db = getDb()
     await db.runAsync(
       `INSERT INTO note_notifications (id, noteId, notificationId, triggerAt, createdAt) VALUES (?, ?, ?, ?, ?)`,
@@ -51,6 +65,7 @@ export async function saveScheduled(noteId: string, notificationId: string, trig
 
 export async function getScheduledByNote(noteId: string): Promise<ScheduledNotification[]> {
   try {
+    await ensureRepoReady()
     const db = getDb()
     const rows = await db.getAllAsync<any>(
       `SELECT * FROM note_notifications WHERE noteId = ? ORDER BY triggerAt ASC`,
@@ -71,6 +86,7 @@ export async function getScheduledByNote(noteId: string): Promise<ScheduledNotif
 
 export async function deleteByNotificationId(notificationId: string): Promise<void> {
   try {
+    await ensureRepoReady()
     const db = getDb()
     await db.runAsync(`DELETE FROM note_notifications WHERE notificationId = ?`, [notificationId])
     logger.info('Deleted scheduled notification', { notificationId })
@@ -82,6 +98,7 @@ export async function deleteByNotificationId(notificationId: string): Promise<vo
 
 export async function deleteAllForNote(noteId: string): Promise<void> {
   try {
+    await ensureRepoReady()
     const db = getDb()
     await db.runAsync(`DELETE FROM note_notifications WHERE noteId = ?`, [noteId])
     logger.info('Deleted all scheduled notifications for note', { noteId })
@@ -93,6 +110,7 @@ export async function deleteAllForNote(noteId: string): Promise<void> {
 
 export async function listAllScheduled(): Promise<ScheduledNotification[]> {
   try {
+    await ensureRepoReady()
     const db = getDb()
     const rows = await db.getAllAsync<any>(`SELECT * FROM note_notifications ORDER BY triggerAt ASC`)
     return rows.map(row => ({

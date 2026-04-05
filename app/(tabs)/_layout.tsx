@@ -2,7 +2,7 @@ import { Tabs } from 'expo-router';
 import React from 'react';
 import { StyleSheet, View } from 'react-native';
 
-import { useThemeStore } from '@/app/store/theme-store';
+import { useThemeStore } from '@/lib/store/theme-store';
 import AmbientBackgroundLayer from '@/components/ambient-background-layer';
 import { HapticTab } from '@/components/haptic-tab';
 import { IconSymbol } from '@/components/ui/icon-symbol';

@@ -1,8 +1,8 @@
-import { ContextsRepo } from '../app/db/contexts-repo'
-import { FeedbackRepo } from '../app/db/feedback-repo'
-import { NotesRepo } from '../app/db/notes-repo'
-import { useNotesStore } from '../app/store/notes-store'
-import { logger } from '../app/utils/logger'
+import { ContextsRepo } from '../lib/db/contexts-repo'
+import { FeedbackRepo } from '../lib/db/feedback-repo'
+import { NotesRepo } from '../lib/db/notes-repo'
+import { useNotesStore } from '../lib/store/notes-store'
+import { logger } from '../lib/utils/logger'
 import { callContextEngineAPI } from './context-engine/client'
 import { classifyContextService } from './context-engine/service'
 
@@ -34,8 +34,15 @@ export async function classifyNoteAsync(noteId: string) {
     logger.error('Note not found for classification', { noteId });
     return;
   }
-  const contexts = await ContextsRepo.listContexts();
-  logger.info('Fetched contexts for classification', { noteId, contextCount: contexts.length, contexts });
+  const allContexts = await ContextsRepo.listContexts();
+  const contexts = allContexts.filter(context => context.category === note.category);
+  logger.info('Fetched contexts for classification', {
+    noteId,
+    totalContextCount: allContexts.length,
+    filteredContextCount: contexts.length,
+    noteCategory: note.category,
+    contexts,
+  });
   
   // Fetch recent user feedback to improve AI accuracy
   const recentFeedback = await FeedbackRepo.getRecentFeedback(50);
@@ -59,6 +66,16 @@ export async function classifyNoteAsync(noteId: string) {
     const result = await classifyContextService(note, contexts, formattedFeedback, modelCall);
     logger.info('Classification service result', { noteId, result });
     if (result.type === 'assign') {
+      const assignedContext = contexts.find(context => context.id === result.contextId)
+      if (!assignedContext) {
+        logger.error('Classification returned context outside note category', {
+          noteId,
+          noteCategory: note.category,
+          contextId: result.contextId,
+        })
+        throw new Error('Classification returned invalid context for note category')
+      }
+
       if (note && NotesRepo && typeof NotesRepo.updateClassification === 'function') {
         await NotesRepo.updateClassification(noteId, result.contextId, 'assigned');
         

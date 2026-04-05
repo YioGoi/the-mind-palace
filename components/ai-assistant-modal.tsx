@@ -1,4 +1,3 @@
-import { Palette } from '@/constants/palette'
 import { useAppTheme } from '@/hooks/use-app-theme'
 import React, { useCallback, useRef, useState } from 'react'
 import {
@@ -15,14 +14,22 @@ import {
     View,
 } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
-import { isPremiumPlan } from '../services/ai/config'
-import { createNote } from '../app/services/note-creator'
-import { runAiAssistant } from '../services/ai-assistant/service'
-import { AssistantMessage } from '../services/ai-assistant/types'
+import { useAiAssistantStore } from '../lib/store/ai-assistant-store'
+import { getAiCapabilities } from '../services/ai/config'
+import { createNote } from '../lib/services/note-creator'
+import { applyAiCleanupPlan, detectAssistantIntent, runAiAssistant } from '../services/ai-assistant/service'
+import { AssistantMessage, CleanupPlan } from '../services/ai-assistant/types'
+import {
+  buildSelectedCleanupPlan,
+  CLEANUP_DISMISS_MESSAGE,
+  CLEANUP_EMPTY_SELECTION_MESSAGE,
+  getInitialCleanupActionSelection,
+  resolveAssistantOutcome,
+  toggleCleanupActionSelection,
+} from '../services/ai-assistant/modal-logic'
 
-let msgCounter = 0
 function newId() {
-  return `msg-${++msgCounter}`
+  return `msg-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`
 }
 
 type Props = {
@@ -31,15 +38,27 @@ type Props = {
 }
 
 export const AiAssistantModal: React.FC<Props> = ({ visible, onClose }) => {
-  const { colors } = useAppTheme()
+  const { colors, isDark } = useAppTheme()
   const insets = useSafeAreaInsets()
   const [messages, setMessages] = useState<AssistantMessage[]>([])
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(false)
+  const [applyingCleanup, setApplyingCleanup] = useState(false)
+  const [pendingCleanupPlan, setPendingCleanupPlan] = useState<CleanupPlan | null>(null)
+  const [selectedCleanupActions, setSelectedCleanupActions] = useState<number[]>([])
   const [keyboardVisible, setKeyboardVisible] = useState(false)
   const listRef = useRef<FlatList>(null)
   const inputRef = useRef<TextInput>(null)
-  const premiumEnabled = isPremiumPlan()
+  const prefill = useAiAssistantStore(state => state.prefill)
+  const clearPrefill = useAiAssistantStore(state => state.clearPrefill)
+  const aiCapabilities = getAiCapabilities()
+  const premiumEnabled = aiCapabilities.premiumEnabled
+
+  React.useEffect(() => {
+    if (!visible || !prefill) return
+    setInput(prefill)
+    clearPrefill()
+  }, [visible, prefill, clearPrefill])
 
   React.useEffect(() => {
     const showEvent = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow'
@@ -54,6 +73,15 @@ export const AiAssistantModal: React.FC<Props> = ({ visible, onClose }) => {
     }
   }, [])
 
+  React.useEffect(() => {
+    if (!visible) return
+    setTimeout(() => listRef.current?.scrollToEnd({ animated: true }), 120)
+  }, [messages, pendingCleanupPlan, visible])
+
+  React.useEffect(() => {
+    setSelectedCleanupActions(getInitialCleanupActionSelection(pendingCleanupPlan))
+  }, [pendingCleanupPlan])
+
   const appendMessage = useCallback((role: AssistantMessage['role'], text: string) => {
     setMessages(prev => [...prev, { id: newId(), role, text }])
     setTimeout(() => listRef.current?.scrollToEnd({ animated: true }), 80)
@@ -66,6 +94,7 @@ export const AiAssistantModal: React.FC<Props> = ({ visible, onClose }) => {
     setInput('')
     appendMessage('user', text)
     setLoading(true)
+    const intent = detectAssistantIntent(text)
 
     try {
       if (!premiumEnabled) {
@@ -78,32 +107,29 @@ export const AiAssistantModal: React.FC<Props> = ({ visible, onClose }) => {
       }
 
       const result = await runAiAssistant(text)
+      const outcome = resolveAssistantOutcome(intent, result)
 
-      if (!result.ok && result.degrade) {
+      if (outcome.kind === 'capture_degraded') {
         await createNote({ title: text, category: 'HAVE', source: 'manual' })
-        appendMessage(
-          'assistant',
-          'AI planning is temporarily unavailable, but your note has been saved.'
-        )
+        appendMessage('assistant', outcome.message)
         return
       }
 
-      if (!result.ok) {
-        appendMessage('assistant', "Sorry, I couldn't finish that request. Try rephrasing.")
+      if (outcome.kind === 'cleanup_degraded' || outcome.kind === 'cleanup_failed' || outcome.kind === 'generic_failed' || outcome.kind === 'cleanup_no_actions' || outcome.kind === 'capture_no_notes') {
+        appendMessage('assistant', outcome.message)
         return
       }
 
-      if (result.result.createdNotes.length === 0) {
-        appendMessage('assistant', "Sorry, I couldn't find a note to create from that.")
+      if (outcome.kind === 'cleanup_review') {
+        setPendingCleanupPlan(outcome.plan)
+        appendMessage('assistant', outcome.message)
         return
       }
 
-      const summary = result.result.createdNotes.map(n => `• ${n.title}`).join('\n')
-      const listWord = result.result.createdNotes.length === 1 ? 'note' : 'notes'
-      appendMessage(
-        'assistant',
-        `${result.result.summary}\n\nCreated ${result.result.createdNotes.length} ${listWord}:\n${summary}`
-      )
+      appendMessage('assistant', outcome.message)
+      if (outcome.warnings.length > 0) {
+        appendMessage('assistant', outcome.warnings.join('\n'))
+      }
     } catch {
       appendMessage('assistant', 'Something went wrong. Please try again.')
     } finally {
@@ -111,9 +137,40 @@ export const AiAssistantModal: React.FC<Props> = ({ visible, onClose }) => {
     }
   }, [input, loading, appendMessage, premiumEnabled])
 
+  const handleApplyCleanup = useCallback(async () => {
+    if (!pendingCleanupPlan || applyingCleanup) return
+    const selectedPlan = buildSelectedCleanupPlan(pendingCleanupPlan, selectedCleanupActions)
+
+    if (selectedPlan.actions.length === 0) {
+      appendMessage('assistant', CLEANUP_EMPTY_SELECTION_MESSAGE)
+      return
+    }
+
+    setApplyingCleanup(true)
+    try {
+      const result = await applyAiCleanupPlan(selectedPlan)
+      appendMessage('assistant', [result.summary, ...result.details].join('\n'))
+      setPendingCleanupPlan(null)
+    } catch {
+      appendMessage('assistant', "I couldn't apply that cleanup plan right now.")
+    } finally {
+      setApplyingCleanup(false)
+    }
+  }, [appendMessage, applyingCleanup, pendingCleanupPlan, selectedCleanupActions])
+
+  const toggleCleanupAction = useCallback((index: number) => {
+    setSelectedCleanupActions((current) => toggleCleanupActionSelection(current, index))
+  }, [])
+
+  const handleCancelCleanup = useCallback(() => {
+    setPendingCleanupPlan(null)
+    appendMessage('assistant', CLEANUP_DISMISS_MESSAGE)
+  }, [appendMessage])
+
   const handleClose = useCallback(() => {
     setMessages([])
     setInput('')
+    setPendingCleanupPlan(null)
     onClose()
   }, [onClose])
 
@@ -161,11 +218,104 @@ export const AiAssistantModal: React.FC<Props> = ({ visible, onClose }) => {
                 : "Premium AI is off. You can still drop a quick note here and sort it manually."}
             </Text>
           }
+          ListFooterComponent={
+            pendingCleanupPlan ? (
+              <View
+                style={[
+                  styles.cleanupReviewCard,
+                  {
+                    backgroundColor: colors.colorBgElevated,
+                    borderColor: colors.colorBorder,
+                  },
+                ]}
+              >
+                <Text style={[styles.cleanupTitle, { color: colors.colorTextMain }]}>Cleanup review</Text>
+                <Text style={[styles.cleanupSummary, { color: colors.colorTextSecondary }]}>
+                  {pendingCleanupPlan.summary}
+                </Text>
+                <View style={styles.cleanupActionList}>
+                  {pendingCleanupPlan.actions.map((action, index) => (
+                    <TouchableOpacity
+                      key={`${action.type}-${index}`}
+                      style={[
+                        styles.cleanupActionRow,
+                        {
+                          borderColor: selectedCleanupActions.includes(index) ? colors.colorPrimary : colors.colorBorder,
+                          backgroundColor: selectedCleanupActions.includes(index)
+                            ? colors.colorBgMuted
+                            : colors.colorBgElevated,
+                        },
+                      ]}
+                      onPress={() => toggleCleanupAction(index)}
+                      activeOpacity={0.85}
+                    >
+                      <View
+                        style={[
+                          styles.cleanupCheckbox,
+                          {
+                            borderColor: selectedCleanupActions.includes(index) ? colors.colorPrimary : colors.colorBorder,
+                            backgroundColor: selectedCleanupActions.includes(index) ? colors.colorPrimary : 'transparent',
+                          },
+                        ]}
+                      >
+                        {selectedCleanupActions.includes(index) ? (
+                          <Text style={[styles.cleanupCheckboxMark, { color: colors.colorBgMain }]}>✓</Text>
+                        ) : null}
+                      </View>
+                      <View style={styles.cleanupActionCopy}>
+                        <Text style={[styles.cleanupActionType, { color: colors.colorTextMain }]}>
+                          {action.type.replace(/_/g, ' ')}
+                        </Text>
+                        <Text style={[styles.cleanupActionReason, { color: colors.colorTextSecondary }]}>
+                          {action.reason}
+                        </Text>
+                      </View>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+                <View style={styles.cleanupButtonRow}>
+                  <TouchableOpacity
+                    style={[
+                      styles.cleanupSecondaryButton,
+                      { borderColor: colors.colorBorder, backgroundColor: colors.colorBgMuted },
+                    ]}
+                    onPress={handleCancelCleanup}
+                    activeOpacity={0.8}
+                  >
+                    <Text style={[styles.cleanupSecondaryButtonText, { color: colors.colorTextMain }]}>
+                      Cancel
+                    </Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[
+                      styles.cleanupPrimaryButton,
+                      { backgroundColor: colors.colorPrimary },
+                      applyingCleanup && styles.sendBtnDisabled,
+                    ]}
+                    onPress={handleApplyCleanup}
+                    disabled={applyingCleanup}
+                    activeOpacity={0.8}
+                  >
+                    {applyingCleanup ? (
+                      <ActivityIndicator size="small" color={colors.colorBgMain} />
+                    ) : (
+                      <Text style={[styles.cleanupPrimaryButtonText, { color: colors.colorBgMain }]}>
+                        Apply selected
+                      </Text>
+                    )}
+                  </TouchableOpacity>
+                </View>
+              </View>
+            ) : null
+          }
           renderItem={({ item }) => (
             <View
               style={[
                 styles.bubble,
                 item.role === 'user' ? styles.bubbleUser : styles.bubbleAssistant,
+                item.role === 'user'
+                  ? { backgroundColor: colors.colorPrimary }
+                  : null,
                 item.role === 'assistant'
                   ? { backgroundColor: colors.colorBgElevated, borderColor: colors.colorBorder }
                   : null,
@@ -175,6 +325,7 @@ export const AiAssistantModal: React.FC<Props> = ({ visible, onClose }) => {
                 style={[
                   styles.bubbleText,
                   item.role === 'user' ? styles.bubbleTextUser : styles.bubbleTextAssistant,
+                  item.role === 'user' ? { color: isDark ? '#000000' : '#ffffff' } : null,
                   item.role === 'assistant' ? { color: colors.colorTextMain } : null,
                 ]}
               >
@@ -212,14 +363,14 @@ export const AiAssistantModal: React.FC<Props> = ({ visible, onClose }) => {
             editable={!loading}
           />
           <TouchableOpacity
-            style={[styles.sendBtn, loading && styles.sendBtnDisabled]}
+            style={[styles.sendBtn, { backgroundColor: colors.colorPrimary }, loading && styles.sendBtnDisabled]}
             onPress={handleSend}
             disabled={loading}
             activeOpacity={0.8}
           >
             {loading
-              ? <ActivityIndicator size="small" color="#fff" />
-              : <Text style={styles.sendText}>→</Text>
+              ? <ActivityIndicator size="small" color={colors.colorBgMain} />
+              : <Text style={[styles.sendText, { color: colors.colorBgMain }]}>→</Text>
             }
           </TouchableOpacity>
         </View>
@@ -231,7 +382,6 @@ export const AiAssistantModal: React.FC<Props> = ({ visible, onClose }) => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: Palette.colorBgMain,
   },
   header: {
     flexDirection: 'row',
@@ -254,7 +404,7 @@ const styles = StyleSheet.create({
   messageList: {
     padding: 16,
     flexGrow: 1,
-    justifyContent: 'flex-end',
+    paddingTop: 24,
   },
   emptyHint: {
     textAlign: 'center',
@@ -272,7 +422,6 @@ const styles = StyleSheet.create({
   },
   bubbleUser: {
     alignSelf: 'flex-end',
-    backgroundColor: Palette.colorPrimary,
     borderBottomRightRadius: 4,
   },
   bubbleAssistant: {
@@ -285,9 +434,88 @@ const styles = StyleSheet.create({
     lineHeight: 21,
   },
   bubbleTextUser: {
-    color: '#fff',
   },
   bubbleTextAssistant: {
+  },
+  cleanupReviewCard: {
+    marginHorizontal: 16,
+    marginBottom: 12,
+    borderWidth: 1,
+    borderRadius: 18,
+    padding: 14,
+    gap: 10,
+  },
+  cleanupTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+  },
+  cleanupSummary: {
+    fontSize: 14,
+    lineHeight: 20,
+  },
+  cleanupActionList: {
+    gap: 10,
+  },
+  cleanupActionRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 10,
+    borderWidth: 1,
+    borderRadius: 14,
+    padding: 12,
+  },
+  cleanupCheckbox: {
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    borderWidth: 1.5,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 2,
+  },
+  cleanupCheckboxMark: {
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  cleanupActionCopy: {
+    flex: 1,
+    gap: 4,
+  },
+  cleanupActionType: {
+    fontSize: 13,
+    fontWeight: '700',
+    textTransform: 'capitalize',
+  },
+  cleanupActionReason: {
+    fontSize: 13,
+    lineHeight: 18,
+  },
+  cleanupButtonRow: {
+    flexDirection: 'row',
+    gap: 10,
+  },
+  cleanupSecondaryButton: {
+    flex: 1,
+    minHeight: 44,
+    borderRadius: 12,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  cleanupSecondaryButtonText: {
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  cleanupPrimaryButton: {
+    flex: 1,
+    minHeight: 44,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  cleanupPrimaryButtonText: {
+    fontSize: 14,
+    fontWeight: '700',
   },
   inputRow: {
     flexDirection: 'row',
@@ -310,7 +538,6 @@ const styles = StyleSheet.create({
     width: 42,
     height: 42,
     borderRadius: 21,
-    backgroundColor: Palette.colorPrimary,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -318,7 +545,6 @@ const styles = StyleSheet.create({
     opacity: 0.5,
   },
   sendText: {
-    color: '#fff',
     fontSize: 20,
     fontWeight: '700',
   },
