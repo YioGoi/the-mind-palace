@@ -21,6 +21,7 @@ import { useAppTheme } from '@/hooks/use-app-theme';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { AiAssistantModal } from '../components/ai-assistant-modal';
 import { PremiumUpgradeSheet } from '../components/premium-upgrade-sheet';
+import { getOrCreateInstallId } from '../lib/services/install-id';
 import { NotificationManager } from '../lib/services/notification-manager';
 import { PremiumCleanupNudge } from '../lib/services/premium-cleanup-nudge';
 import { useAiAssistantStore } from '../lib/store/ai-assistant-store';
@@ -166,6 +167,7 @@ export default function RootLayout() {
     initializeTheme().catch((e) => logger.error('Failed to initialize theme preference', { err: e }))
     initializeUpsell().catch((e) => logger.error('Failed to initialize AI upsell state', { err: e }))
     initializeNotes().catch((e) => logger.error('Failed to initialize notes store', { err: e }))
+    getOrCreateInstallId().catch((e) => logger.error('Failed to initialize install id', { err: e }))
 
     // Initialize notification system DB etc.
     NotificationManager.initNotificationSystem().catch((e) => logger.error('Failed to init notifications', { err: e }))
@@ -261,7 +263,7 @@ export default function RootLayout() {
   }
 
   return (
-    <GestureHandlerRootView style={{ flex: 1 }}>
+    <GestureHandlerRootView style={{ flex: 1, backgroundColor: '#080610' }}>
       <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
         <Stack>
           <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
@@ -273,7 +275,7 @@ export default function RootLayout() {
       {/* Global AI button — floats above all screens */}
       {showAiButton ? (
         <TouchableOpacity
-          style={[styles.aiButton, { backgroundColor: isDark ? colors.colorFocus : colors.colorPrimary }]}
+          style={[styles.aiButton, { backgroundColor: isDark ? colors.colorFocus : colors.colorTextSecondary }]}
           onPress={handleAiEntry}
           activeOpacity={0.85}
         >
@@ -326,16 +328,15 @@ export default function RootLayout() {
         <AiAssistantModal
           visible={aiModalVisible}
           onClose={closeAiAssistant}
+          onRequirePremium={() => setPremiumSheetVisible(true)}
         />
       ) : null}
 
-      {!premiumEnabled ? (
-        <PremiumUpgradeSheet
-          visible={premiumSheetVisible}
-          onClose={() => setPremiumSheetVisible(false)}
-          onStartPremium={handleStartPremium}
-        />
-      ) : null}
+      <PremiumUpgradeSheet
+        visible={premiumSheetVisible}
+        onClose={() => setPremiumSheetVisible(false)}
+        onStartPremium={handleStartPremium}
+      />
     </GestureHandlerRootView>
   );
 }

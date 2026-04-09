@@ -29,11 +29,13 @@ type AmbientLink = {
 }
 
 const BAND_CONFIG = [
-  { count: 12, orbit: 0.2, orbitJitter: 0.03, speed: 0.18, size: [1.8, 3], lineAlpha: 0.09 },
-  { count: 16, orbit: 0.32, orbitJitter: 0.04, speed: 0.14, size: [2.3, 4.1], lineAlpha: 0.11 },
-  { count: 20, orbit: 0.45, orbitJitter: 0.05, speed: 0.1, size: [2.9, 5.6], lineAlpha: 0.12 },
-  { count: 12, orbit: 0.6, orbitJitter: 0.055, speed: 0.075, size: [4.2, 8.6], lineAlpha: 0.1 },
+  { count: 8, orbit: 0.2, orbitJitter: 0.03, speed: 0.18, size: [1.8, 3], lineAlpha: 0.07 },
+  { count: 12, orbit: 0.32, orbitJitter: 0.04, speed: 0.14, size: [2.3, 4.1], lineAlpha: 0.09 },
+  { count: 14, orbit: 0.45, orbitJitter: 0.05, speed: 0.1, size: [2.9, 5.6], lineAlpha: 0.1 },
+  { count: 8, orbit: 0.6, orbitJitter: 0.055, speed: 0.075, size: [4.2, 8.6], lineAlpha: 0.085 },
 ] as const
+
+const RENDER_FRAME_MS = 1000 / 30
 
 function createSeededRandom(seed: number) {
   let value = seed
@@ -90,17 +92,23 @@ function clamp(value: number, min: number, max: number) {
 }
 
 function useAmbientAnimation(active: boolean) {
-  const [phase, setPhase] = useState(0)
-  const [motion, setMotion] = useState({ x: 0, y: 0 })
+  const [renderState, setRenderState] = useState({ phase: 0, motion: { x: 0, y: 0 } })
   const [motionStatus, setMotionStatus] = useState<'idle' | 'unavailable' | 'denied' | 'granted'>('idle')
   const animationRef = useRef<number | null>(null)
   const lastRef = useRef<number | null>(null)
+  const lastCommitRef = useRef<number>(0)
+  const phaseRef = useRef(0)
+  const motionTargetRef = useRef({ x: 0, y: 0 })
+  const motionCurrentRef = useRef({ x: 0, y: 0 })
 
   useEffect(() => {
     if (!active) {
-      setPhase(0)
-      setMotion({ x: 0, y: 0 })
+      phaseRef.current = 0
+      lastCommitRef.current = 0
+      setRenderState({ phase: 0, motion: { x: 0, y: 0 } })
       setMotionStatus('idle')
+      motionTargetRef.current = { x: 0, y: 0 }
+      motionCurrentRef.current = { x: 0, y: 0 }
       return
     }
 
@@ -111,7 +119,29 @@ function useAmbientAnimation(active: boolean) {
       const last = lastRef.current ?? timestamp
       const delta = Math.min(timestamp - last, 48)
       lastRef.current = timestamp
-      setPhase((prev) => prev + delta * 0.00018)
+      phaseRef.current += delta * 0.00018
+
+      const smoothing = 1 - Math.pow(0.12, delta / 16)
+      const nextX =
+        motionCurrentRef.current.x +
+        (motionTargetRef.current.x - motionCurrentRef.current.x) * smoothing
+      const nextY =
+        motionCurrentRef.current.y +
+        (motionTargetRef.current.y - motionCurrentRef.current.y) * smoothing
+
+      motionCurrentRef.current = {
+        x: clamp(nextX, -1, 1),
+        y: clamp(nextY, -1, 1),
+      }
+
+      if (timestamp - lastCommitRef.current >= RENDER_FRAME_MS) {
+        lastCommitRef.current = timestamp
+        setRenderState({
+          phase: phaseRef.current,
+          motion: motionCurrentRef.current,
+        })
+      }
+
       animationRef.current = requestAnimationFrame(step)
     }
 
@@ -120,6 +150,7 @@ function useAmbientAnimation(active: boolean) {
     return () => {
       mounted = false
       lastRef.current = null
+      lastCommitRef.current = 0
       if (animationRef.current !== null) cancelAnimationFrame(animationRef.current)
       animationRef.current = null
     }
@@ -149,7 +180,7 @@ function useAmbientAnimation(active: boolean) {
         }
 
         setMotionStatus('granted')
-        DeviceMotion.setUpdateInterval(48)
+        DeviceMotion.setUpdateInterval(80)
         subscription = DeviceMotion.addListener((event) => {
           const gamma =
             event.rotation?.gamma ??
@@ -157,15 +188,16 @@ function useAmbientAnimation(active: boolean) {
           const beta =
             event.rotation?.beta ??
             ((event.accelerationIncludingGravity?.y ?? 0) * 24)
-          const alpha = event.rotation?.alpha ?? 0
-          setMotion({
-            x: clamp((gamma + alpha * 0.12) / 20, -1, 1),
-            y: clamp(beta / 26, -1, 1),
-          })
+          motionTargetRef.current = {
+            x: clamp(gamma / 22, -1, 1),
+            y: clamp(beta / 28, -1, 1),
+          }
         })
       } catch {
         setMotionStatus('unavailable')
-        setMotion({ x: 0, y: 0 })
+        motionTargetRef.current = { x: 0, y: 0 }
+        motionCurrentRef.current = { x: 0, y: 0 }
+        setRenderState({ phase: phaseRef.current, motion: { x: 0, y: 0 } })
       }
     }
 
@@ -174,10 +206,12 @@ function useAmbientAnimation(active: boolean) {
     return () => {
       mounted = false
       subscription?.remove()
+      motionTargetRef.current = { x: 0, y: 0 }
+      motionCurrentRef.current = { x: 0, y: 0 }
     }
   }, [active])
 
-  return { phase, motion, motionStatus }
+  return { phase: renderState.phase, motion: renderState.motion, motionStatus }
 }
 
 export function AmbientBackgroundLayer({ enabled, reducedMotion = false, scheme }: Props) {
@@ -185,6 +219,14 @@ export function AmbientBackgroundLayer({ enabled, reducedMotion = false, scheme 
   const { colors } = useAppTheme()
   const { phase, motion } = useAmbientAnimation(enabled && !reducedMotion)
   const graph = useMemo(() => createAmbientGraph(), [])
+  const graphByBand = useMemo(
+    () =>
+      BAND_CONFIG.map((_, bandIndex) => ({
+        nodes: graph.nodes.filter((node) => node.band === bandIndex),
+        links: graph.links.filter((link) => link.band === bandIndex),
+      })),
+    [graph.links, graph.nodes]
+  )
   const viewTranslateX = reducedMotion ? 0 : motion.x * 72 * colors.ambientMotionMultiplier
   const viewTranslateY = reducedMotion ? 0 : motion.y * 58 * colors.ambientMotionMultiplier
   const baseRgb = useMemo(
@@ -198,15 +240,16 @@ export function AmbientBackgroundLayer({ enabled, reducedMotion = false, scheme 
         const centerX = width * 0.5
         const centerY = height * 0.44
 
-        const layerNodes = graph.nodes.filter((node) => node.band === index).map((node) => {
+        const layerNodes = graphByBand[index].nodes.map((node) => {
           const rotation = phase * config.speed * colors.ambientIdleSpeed + node.pulse * 0.08
           const twist = reducedMotion ? 0 : motion.x * 1.35 + motion.y * 0.42
           const angle = node.angle + rotation + twist * (0.7 + index * 0.18)
           const orbitBase = Math.min(width, height) * node.orbit
           const perspective = 1 + node.depth * 0.34 + (reducedMotion ? 0 : motion.y * node.depth * 0.28)
           const projectedOrbit = orbitBase * perspective
-          const pulse = reducedMotion ? 1 : 1 + Math.sin(phase * (1.2 + node.drift * 0.16) + node.pulse) * 0.22
-          const cx = centerX + Math.cos(angle) * projectedOrbit + Math.sin(phase * 0.9 + node.pulse) * 8
+          const pulse =
+            reducedMotion ? 1 : 1 + Math.sin(phase * (1.2 + node.drift * 0.16) + node.pulse) * 0.18
+          const cx = centerX + Math.cos(angle) * projectedOrbit + Math.sin(phase * 0.9 + node.pulse) * 5
           const cy = centerY + Math.sin(angle) * projectedOrbit * (0.56 + node.tilt * 0.08) + node.depth * 24 + motion.y * 34
           const depthScale = 0.82 + ((node.depth + 1) / 2) * 1.9
           const radius = Math.max(1.05, node.radius * depthScale * pulse)
@@ -223,15 +266,16 @@ export function AmbientBackgroundLayer({ enabled, reducedMotion = false, scheme 
           }
         })
 
-        const layerLinks = graph.links.filter((link) => link.band === index).map((link) => ({
+        const nodeById = new Map(layerNodes.map((node) => [node.id, node]))
+        const layerLinks = graphByBand[index].links.map((link) => ({
           ...link,
-          start: layerNodes.find((node) => node.id === link.from),
-          end: layerNodes.find((node) => node.id === link.to),
+          start: nodeById.get(link.from),
+          end: nodeById.get(link.to),
         }))
 
         return { layerNodes, layerLinks }
       }),
-    [baseRgb.b, baseRgb.g, baseRgb.r, colors.ambientIdleSpeed, graph.links, graph.nodes, height, motion.x, motion.y, phase, reducedMotion, width]
+    [baseRgb.b, baseRgb.g, baseRgb.r, colors.ambientIdleSpeed, graphByBand, height, motion.x, motion.y, phase, reducedMotion, width]
   )
 
   const coreSphere = useMemo(() => {

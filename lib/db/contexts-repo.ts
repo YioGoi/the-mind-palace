@@ -67,6 +67,11 @@ export async function updateContextName(id: string, name: string) {
   logger.info('Updated context', { id })
 }
 
+export async function updateContextCategory(id: string, category: 'HAVE' | 'URGENT' | 'NICE') {
+  await run(`UPDATE ${TABLE} SET category = ? WHERE id = ?;`, [category, id])
+  logger.info('Updated context category', { id, category })
+}
+
 export async function deleteContext(id: string) {
   await run(`DELETE FROM ${TABLE} WHERE id = ?;`, [id])
   logger.info('Deleted context', { id })
@@ -82,6 +87,7 @@ export const ContextsRepo = {
   createContext,
   createContexts,
   updateContextName,
+  updateContextCategory,
   deleteContext,
   listContexts,
 }

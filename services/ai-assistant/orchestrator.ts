@@ -98,11 +98,46 @@ function sanitizeActionText(value: string | null | undefined, maxLength: number)
   return normalized.length > maxLength ? normalized.slice(0, maxLength).trim() : normalized
 }
 
+function formatPlanTime(value: string | null) {
+  const iso = ensureIso(value)
+  if (!iso) return null
+
+  const date = new Date(iso)
+  if (Number.isNaN(date.getTime())) return null
+
+  return new Intl.DateTimeFormat(undefined, {
+    day: '2-digit',
+    month: 'short',
+    hour: '2-digit',
+    minute: '2-digit',
+  }).format(date)
+}
+
+function buildOperationLine(action: CreateNoteAction, resolvedContextName: string | null) {
+  const parts = [`Saved "${action.title}" as ${action.category.toLowerCase()}.`]
+  const dueLabel = formatPlanTime(action.dueDate)
+  const reminderLabel = formatPlanTime(action.reminders[0] ?? null)
+
+  if (resolvedContextName) {
+    parts.push(`Context: ${resolvedContextName}.`)
+  }
+
+  if (dueLabel) {
+    parts.push(`Time: ${dueLabel}.`)
+  }
+
+  if (reminderLabel) {
+    parts.push(`Reminder: ${reminderLabel}.`)
+  }
+
+  return parts.join(' ')
+}
+
 function sanitizePlan(plan: AssistantActionPlan): AssistantActionPlan {
   const normalizedActions = Array.isArray(plan.actions) ? plan.actions.slice(0, 5) : []
 
   return {
-    summary: sanitizeActionText(plan.summary, 240) ?? 'Your notes are ready.',
+    summary: plan.summary?.trim() || 'Your notes are ready.',
     actions: normalizedActions
       .filter((action): action is CreateNoteAction => action?.type === 'create_note')
       .map((action) => ({
@@ -163,6 +198,12 @@ async function resolveContextId(action: CreateNoteAction): Promise<string | null
   return createdContext?.id ?? null
 }
 
+async function resolveContextName(contextId: string | null): Promise<string | null> {
+  if (!contextId) return null
+  const contexts = await ContextsRepo.listContexts()
+  return contexts.find((context) => context.id === contextId)?.name ?? null
+}
+
 async function applyReminderPlan(noteId: string, action: CreateNoteAction): Promise<string[]> {
   const warnings: string[] = []
   const firstReminderIso = ensureIso(action.reminders[0] ?? null)
@@ -218,6 +259,7 @@ export async function planAssistantActions(userMessage: string): Promise<Assista
   const contexts = await ContextsRepo.listContexts()
   const systemPrompt = buildSystemPrompt(getCurrentLocalIso(), Intl.DateTimeFormat().resolvedOptions().timeZone, contexts)
   const raw = await callAiAssistant(systemPrompt, userMessage, {
+    feature: 'assistant_capture',
     responseFormat: {
       type: 'json_schema',
       json_schema: {
@@ -235,6 +277,7 @@ export async function planAssistantActions(userMessage: string): Promise<Assista
 export async function executeAssistantPlan(plan: AssistantActionPlan): Promise<AssistantActionResponse> {
   const capabilities = getAiCapabilities()
   const createdNotes = []
+  const operationLog: string[] = []
   const warnings: string[] = []
 
   for (const rawAction of sanitizePlan(plan).actions) {
@@ -242,6 +285,7 @@ export async function executeAssistantPlan(plan: AssistantActionPlan): Promise<A
     const action = rawAction
 
     const contextId = await resolveContextId(action)
+    const contextName = await resolveContextName(contextId)
     const note = await createNote({
       title: action.title,
       body: action.body ?? undefined,
@@ -264,13 +308,15 @@ export async function executeAssistantPlan(plan: AssistantActionPlan): Promise<A
     }
 
     createdNotes.push(note)
+    operationLog.push(buildOperationLine(action, contextName))
   }
 
   await useNotesStore.getState().loadNotes()
 
   return {
     createdNotes,
-    summary: sanitizeActionText(plan.summary, 240) ?? 'Your notes are ready.',
+    operationLog,
+    summary: plan.summary?.trim() || 'Your notes are ready.',
     warnings,
   }
 }

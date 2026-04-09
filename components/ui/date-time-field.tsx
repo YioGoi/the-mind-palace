@@ -1,7 +1,7 @@
 import { useAppTheme } from '@/hooks/use-app-theme'
 import DateTimePicker, { DateTimePickerEvent } from '@react-native-community/datetimepicker'
-import React, { useState } from 'react'
-import { Keyboard, Modal, Platform, StyleSheet, Text, TouchableOpacity, View } from 'react-native'
+import React, { useEffect, useState } from 'react'
+import { Animated, Easing, Keyboard, Modal, Platform, StyleSheet, Text, TouchableOpacity, View } from 'react-native'
 
 export type DateTimeFieldProps = {
   label: string
@@ -27,6 +27,10 @@ export const DateTimeField: React.FC<DateTimeFieldProps> = ({
   const { colors, isDark } = useAppTheme()
   const [show, setShow] = useState(false)
   const [tempDate, setTempDate] = useState<Date>(value || new Date())
+  const [renderModal, setRenderModal] = useState(false)
+  const backdropOpacity = useState(() => new Animated.Value(0))[0]
+  const panelTranslateY = useState(() => new Animated.Value(20))[0]
+  const panelOpacity = useState(() => new Animated.Value(0.98))[0]
 
   const formatted = value
     ? `${value.getDate().toString().padStart(2, '0')} ${value.toLocaleString('default', { month: 'short' })} ${value.getFullYear()}, ${value.getHours().toString().padStart(2, '0')}:${value.getMinutes().toString().padStart(2, '0')}`
@@ -60,6 +64,60 @@ export const DateTimeField: React.FC<DateTimeFieldProps> = ({
     }
   }
 
+  useEffect(() => {
+    if (Platform.OS !== 'ios') return
+
+    if (show) {
+      setRenderModal(true)
+      Animated.parallel([
+        Animated.timing(backdropOpacity, {
+          toValue: 1,
+          duration: 180,
+          easing: Easing.out(Easing.quad),
+          useNativeDriver: true,
+        }),
+        Animated.timing(panelTranslateY, {
+          toValue: 0,
+          duration: 240,
+          easing: Easing.out(Easing.cubic),
+          useNativeDriver: true,
+        }),
+        Animated.timing(panelOpacity, {
+          toValue: 1,
+          duration: 220,
+          easing: Easing.out(Easing.quad),
+          useNativeDriver: true,
+        }),
+      ]).start()
+      return
+    }
+
+    Animated.parallel([
+      Animated.timing(backdropOpacity, {
+        toValue: 0,
+        duration: 140,
+        easing: Easing.in(Easing.quad),
+        useNativeDriver: true,
+      }),
+      Animated.timing(panelTranslateY, {
+        toValue: 20,
+        duration: 180,
+        easing: Easing.in(Easing.quad),
+        useNativeDriver: true,
+      }),
+      Animated.timing(panelOpacity, {
+        toValue: 0.98,
+        duration: 140,
+        easing: Easing.in(Easing.quad),
+        useNativeDriver: true,
+      }),
+    ]).start(({ finished }) => {
+      if (finished) {
+        setRenderModal(false)
+      }
+    })
+  }, [show, backdropOpacity, panelOpacity, panelTranslateY])
+
   return (
     <View style={styles.fieldContainer}>
       <Text style={[styles.label, { color: colors.colorTextSecondary }]}>{label}</Text>
@@ -78,35 +136,46 @@ export const DateTimeField: React.FC<DateTimeFieldProps> = ({
       >
         <Text style={[styles.valueText, { color: colors.colorTextMain }]}>{formatted}</Text>
       </TouchableOpacity>
-      {show && Platform.OS === 'ios' && (
+      {renderModal && Platform.OS === 'ios' && (
         <Modal
-          visible={show}
-          animationType="slide"
+          visible={renderModal}
+          animationType="none"
           transparent
           onRequestClose={closePicker}
         >
-          <TouchableOpacity style={styles.modalBackdrop} activeOpacity={1} onPress={closePicker} />
-          <View style={[styles.modalContent, { backgroundColor: colors.colorBgElevated }]}>
-            <DateTimePicker
-              value={tempDate}
-              mode={mode}
-              display="spinner"
-              onChange={(_e, d) => d && setTempDate(d)}
-              minimumDate={minimumDate}
-              maximumDate={maximumDate}
-              style={{ backgroundColor: colors.colorBgElevated }}
-              textColor={colors.colorTextMain}
-              themeVariant={isDark ? 'dark' : 'light'}
-            />
-            <View style={styles.modalActions}>
-              <TouchableOpacity style={[styles.cancelButton, { backgroundColor: colors.colorBgMuted }]} onPress={handleCancel}>
-                <Text style={[styles.cancelText, { color: colors.colorTextSecondary }]}>Cancel</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={[styles.confirmButton, { backgroundColor: colors.colorPrimary }]} onPress={handleConfirm}>
-                <Text style={styles.confirmText}>Confirm</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
+          <Animated.View style={[styles.modalRoot, { opacity: backdropOpacity }]}>
+            <TouchableOpacity style={styles.modalBackdrop} activeOpacity={1} onPress={closePicker} />
+            <Animated.View
+              style={[
+                styles.modalContent,
+                {
+                  backgroundColor: colors.colorBgElevated,
+                  opacity: panelOpacity,
+                  transform: [{ translateY: panelTranslateY }],
+                },
+              ]}
+            >
+              <DateTimePicker
+                value={tempDate}
+                mode={mode}
+                display="spinner"
+                onChange={(_e, d) => d && setTempDate(d)}
+                minimumDate={minimumDate}
+                maximumDate={maximumDate}
+                style={{ backgroundColor: colors.colorBgElevated }}
+                textColor={colors.colorTextMain}
+                themeVariant={isDark ? 'dark' : 'light'}
+              />
+              <View style={styles.modalActions}>
+                <TouchableOpacity style={[styles.cancelButton, { backgroundColor: colors.colorBgMuted }]} onPress={handleCancel}>
+                  <Text style={[styles.cancelText, { color: colors.colorTextSecondary }]}>Cancel</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={[styles.confirmButton, { backgroundColor: colors.colorPrimary }]} onPress={handleConfirm}>
+                  <Text style={[styles.confirmText, { color: colors.colorBgMain }]}>Confirm</Text>
+                </TouchableOpacity>
+              </View>
+            </Animated.View>
+          </Animated.View>
         </Modal>
       )}
       {show && Platform.OS === 'android' && (
@@ -148,11 +217,11 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.3)',
   },
+  modalRoot: {
+    flex: 1,
+    justifyContent: 'flex-end',
+  },
   modalContent: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    bottom: 0,
     borderTopLeftRadius: 16,
     borderTopRightRadius: 16,
     padding: 16,
@@ -183,7 +252,6 @@ const styles = StyleSheet.create({
     borderRadius: 8,
   },
   confirmText: {
-    color: '#fff',
     fontWeight: '600',
     fontSize: 16,
   },

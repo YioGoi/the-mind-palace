@@ -60,6 +60,12 @@ export type CleanupAction =
       contextName: string
       reason: string
     }
+  | {
+      type: 'move_context_to_category'
+      contextId: string
+      targetCategory: NoteCategory
+      reason: string
+    }
 
 export type CleanupPlan = {
   summary: string
@@ -75,6 +81,7 @@ export type CleanupApplyResult = {
 
 export type AssistantActionResponse = {
   createdNotes: { id: string; title: string }[]
+  operationLog: string[]
   summary: string
   warnings: string[]
 }

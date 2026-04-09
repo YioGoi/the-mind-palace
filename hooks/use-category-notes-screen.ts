@@ -3,6 +3,7 @@ import { Alert } from 'react-native'
 import { ContextsRepo } from '@/lib/db/contexts-repo'
 import { NotesRepo } from '@/lib/db/notes-repo'
 import { NotificationManager } from '@/lib/services/notification-manager'
+import { moveContextToCategory } from '@/lib/services/context-category-move'
 import { useNotificationIntentStore } from '@/lib/store/notification-intent-store'
 import { useNoteUiHintsStore } from '@/lib/store/note-ui-hints-store'
 import type { Context, Note } from '@/lib/store/notes-store'
@@ -13,12 +14,15 @@ import {
   getSectionCounts,
   isPlaceholderSectionItem,
   isEditableContextSection,
+  SPECIAL_SECTION_IDS,
   syncCollapsedSections,
   toDisplaySections,
 } from '@/lib/utils/category-sections'
 import { logger } from '@/lib/utils/logger'
 
 type Category = 'HAVE' | 'NICE' | 'URGENT'
+
+const CATEGORY_OPTIONS: Category[] = ['URGENT', 'HAVE', 'NICE']
 
 export function useCategoryNotesScreen(category: Category) {
   const allNotes = useNotesStore(state => state.notes) as Note[]
@@ -34,6 +38,8 @@ export function useCategoryNotesScreen(category: Category) {
   const hasSeenDoneActionHint = useNoteUiHintsStore(state => state.hasSeenDoneActionHint)
   const initializeNoteUiHints = useNoteUiHintsStore(state => state.initialize)
   const dismissDoneActionHint = useNoteUiHintsStore(state => state.dismissDoneActionHint)
+  const unsortedAiNotice = useNoteUiHintsStore(state => state.unsortedAiNoticeByCategory[category])
+  const dismissUnsortedAiNotice = useNoteUiHintsStore(state => state.dismissUnsortedAiNotice)
 
   const [sheetVisible, setSheetVisible] = useState(false)
   const [selectedNoteId, setSelectedNoteId] = useState<string | null>(null)
@@ -173,9 +179,78 @@ export function useCategoryNotesScreen(category: Category) {
     setEditingContextName(section.title)
   }
 
+  function handleDeleteContext(id: string, title: string) {
+    const currentContext = contexts.find(context => context.id === id)
+    if (!currentContext) return
+
+    const noteCount = notes.filter(note => note.contextId === id).length
+
+    Alert.alert(
+      'Delete Context',
+      noteCount > 0
+        ? `"${title}" will be removed and ${noteCount} note${noteCount === 1 ? '' : 's'} will move to Unsorted.`
+        : `Delete "${title}"?`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await NotesRepo.clearContext(id)
+              await ContextsRepo.deleteContext(id)
+              await loadNotes(category)
+              setEditingContextId(null)
+              setEditingContextName('')
+            } catch (err) {
+              logger.error('Failed to delete context', { err, category, contextId: id })
+              Alert.alert('Error', 'Failed to delete context')
+            }
+          },
+        },
+      ]
+    )
+  }
+
+  function handleMoveContextCategory(id: string, title: string) {
+    const currentContext = contexts.find(context => context.id === id)
+    if (!currentContext) return
+
+    const currentCategory = currentContext.category as Category
+    const options = CATEGORY_OPTIONS.filter(option => option !== currentCategory)
+
+    Alert.alert(
+      'Move Context',
+      `"${title}" and all of its notes will move to a new category.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        ...options.map((targetCategory) => ({
+          text: targetCategory,
+          onPress: async () => {
+            try {
+              const result = await moveContextToCategory(id, targetCategory)
+              await loadNotes(category)
+              Alert.alert(
+                'Moved',
+                `"${result.contextName}" moved to ${result.toCategory} with ${result.movedNoteCount} note${result.movedNoteCount === 1 ? '' : 's'}.`
+              )
+            } catch (err) {
+              logger.error('Failed to move context category', { err, category, contextId: id, targetCategory })
+              Alert.alert('Error', 'Failed to move context to the selected category')
+            }
+          },
+        })),
+      ]
+    )
+  }
+
   async function handleUpdateContext(id: string, name: string) {
     const parsed = name.trim()
     const currentContext = contexts.find(context => context.id === id)
+    const rollbackEdit = () => {
+      setEditingContextName(currentContext?.name ?? '')
+      setEditingContextId(null)
+    }
 
     if (!currentContext) {
       setEditingContextId(null)
@@ -190,6 +265,7 @@ export function useCategoryNotesScreen(category: Category) {
     }
 
     if (!parsed) {
+      rollbackEdit()
       Alert.alert('Invalid name', 'Context name cannot be empty')
       return
     }
@@ -198,6 +274,7 @@ export function useCategoryNotesScreen(category: Category) {
       context => context.name.toLowerCase() === parsed.toLowerCase() && context.id !== id
     )
     if (isDuplicate) {
+      rollbackEdit()
       Alert.alert('Duplicate name', 'Another context with this name already exists')
       return
     }
@@ -250,12 +327,15 @@ export function useCategoryNotesScreen(category: Category) {
     doneHintNoteId,
     detailModalOpen,
     dismissDoneHint,
+    dismissUnsortedAiNotice,
     editingContextId,
     editingContextName,
     firstUndoneNoteId,
     handleDelete,
+    handleDeleteContext,
     handleEditContext,
     handleMarkDone,
+    handleMoveContextCategory,
     handleUpdateContext,
     hasSeenDoneActionHint,
     isEditableSection,
@@ -275,5 +355,7 @@ export function useCategoryNotesScreen(category: Category) {
     toggleSection,
     collapsedSections,
     refreshNotes,
+    unsortedAiNotice,
+    unsortedSectionId: SPECIAL_SECTION_IDS.unsorted,
   }
 }

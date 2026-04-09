@@ -19,48 +19,57 @@ export type Note = {
   updatedAt: number
 }
 
+let notesInitPromise: Promise<void> | null = null
+
+async function initializeNotesRepo() {
+  await ensureWritableDatabase()
+  const db = getDb()
+  await db.execAsync(`
+    CREATE TABLE IF NOT EXISTS notes (
+      id TEXT PRIMARY KEY,
+      title TEXT NOT NULL,
+      body TEXT,
+      category TEXT NOT NULL,
+      contextId TEXT,
+      classificationStatus TEXT,
+      createdAt INTEGER NOT NULL,
+      updatedAt INTEGER NOT NULL
+    )
+  `)
+
+  const columns = await db.getAllAsync<{ name: string }>(`PRAGMA table_info(notes)`)
+  const columnNames = new Set(columns.map((column) => column.name))
+
+  if (!columnNames.has('reminderAt')) {
+    await db.execAsync(`ALTER TABLE notes ADD COLUMN reminderAt INTEGER`)
+  }
+
+  if (!columnNames.has('initialReminderAt')) {
+    await db.execAsync(`ALTER TABLE notes ADD COLUMN initialReminderAt INTEGER`)
+  }
+
+  if (!columnNames.has('dueDate')) {
+    await db.execAsync(`ALTER TABLE notes ADD COLUMN dueDate INTEGER`)
+  }
+
+  if (!columnNames.has('status')) {
+    await db.execAsync(`ALTER TABLE notes ADD COLUMN status TEXT DEFAULT 'PENDING'`)
+  }
+
+  logger.info('NotesRepo initialized')
+}
+
 export const NotesRepo = {
   async init() {
-    await ensureWritableDatabase()
-    try {
-      const db = getDb()
-      await db.execAsync(`
-        CREATE TABLE IF NOT EXISTS notes (
-          id TEXT PRIMARY KEY,
-          title TEXT NOT NULL,
-          body TEXT,
-          category TEXT NOT NULL,
-          contextId TEXT,
-          classificationStatus TEXT,
-          createdAt INTEGER NOT NULL,
-          updatedAt INTEGER NOT NULL
-        )
-      `)
-
-      const columns = await db.getAllAsync<{ name: string }>(`PRAGMA table_info(notes)`)
-      const columnNames = new Set(columns.map((column) => column.name))
-
-      if (!columnNames.has('reminderAt')) {
-        await db.execAsync(`ALTER TABLE notes ADD COLUMN reminderAt INTEGER`)
-      }
-
-      if (!columnNames.has('initialReminderAt')) {
-        await db.execAsync(`ALTER TABLE notes ADD COLUMN initialReminderAt INTEGER`)
-      }
-
-      if (!columnNames.has('dueDate')) {
-        await db.execAsync(`ALTER TABLE notes ADD COLUMN dueDate INTEGER`)
-      }
-
-      if (!columnNames.has('status')) {
-        await db.execAsync(`ALTER TABLE notes ADD COLUMN status TEXT DEFAULT 'PENDING'`)
-      }
-
-      logger.info('NotesRepo initialized')
-    } catch (err) {
-      logger.error('NotesRepo init failed', { err })
-      throw err
+    if (!notesInitPromise) {
+      notesInitPromise = initializeNotesRepo().catch((err) => {
+        notesInitPromise = null
+        logger.error('NotesRepo init failed', { err })
+        throw err
+      })
     }
+
+    return notesInitPromise
   },
   async insert(note: Omit<Note, 'id' | 'createdAt' | 'updatedAt'>): Promise<Note> {
     const id = Crypto.randomUUID()
@@ -179,6 +188,27 @@ export const NotesRepo = {
       throw err
     }
   },
+  async clearContext(contextId: string): Promise<number> {
+    try {
+      const db = getDb()
+      const rows = await db.getAllAsync<{ count: number }>(
+        `SELECT COUNT(*) as count FROM notes WHERE contextId = ?`,
+        [contextId]
+      )
+      const affectedCount = rows[0]?.count ?? 0
+
+      await db.runAsync(
+        `UPDATE notes SET contextId = NULL, classificationStatus = ?, updatedAt = ? WHERE contextId = ?`,
+        ['manual', Date.now(), contextId]
+      )
+
+      logger.info('Cleared context from notes', { contextId, affectedCount })
+      return affectedCount
+    } catch (err) {
+      logger.error('Clear context from notes failed', { contextId, err })
+      throw err
+    }
+  },
   async updateReminder(noteId: string, reminderAt: number | null): Promise<void> {
     try {
       const db = getDb()
@@ -238,6 +268,87 @@ export const NotesRepo = {
       logger.info('Note deleted', { noteId })
     } catch (err) {
       logger.error('Delete note failed', { noteId, err })
+      throw err
+    }
+  },
+  async updateCategoryForContext(
+    contextId: string,
+    category: 'HAVE' | 'URGENT' | 'NICE',
+    options?: {
+      reminderAt?: number | null
+      initialReminderAt?: number | null
+      dueDate?: number | null
+      status?: 'PENDING' | 'DONE' | 'EXPIRED'
+    }
+  ): Promise<number> {
+    try {
+      const db = getDb()
+      const rows = await db.getAllAsync<{ count: number }>(
+        `SELECT COUNT(*) as count FROM notes WHERE contextId = ?`,
+        [contextId]
+      )
+      const affectedCount = rows[0]?.count ?? 0
+
+      await db.runAsync(
+        `UPDATE notes
+         SET category = ?,
+             reminderAt = ?,
+             initialReminderAt = ?,
+             dueDate = ?,
+             status = COALESCE(?, status),
+             updatedAt = ?
+         WHERE contextId = ?`,
+        [
+          category,
+          options?.reminderAt ?? null,
+          options?.initialReminderAt ?? null,
+          options?.dueDate ?? null,
+          options?.status ?? null,
+          Date.now(),
+          contextId,
+        ]
+      )
+      logger.info('Updated note categories for context', { contextId, category, affectedCount })
+      return affectedCount
+    } catch (err) {
+      logger.error('Update note categories for context failed', { contextId, category, err })
+      throw err
+    }
+  },
+  async updateNoteCategoryFields(
+    noteId: string,
+    params: {
+      category: 'HAVE' | 'URGENT' | 'NICE'
+      reminderAt: number | null
+      initialReminderAt: number | null
+      dueDate: number | null
+      status?: 'PENDING' | 'DONE' | 'EXPIRED'
+    }
+  ): Promise<void> {
+    try {
+      const db = getDb()
+      await db.runAsync(
+        `UPDATE notes
+         SET category = ?,
+             reminderAt = ?,
+             initialReminderAt = ?,
+             dueDate = ?,
+             status = COALESCE(?, status),
+             updatedAt = ?
+         WHERE id = ?`,
+        [
+          params.category,
+          params.reminderAt,
+          params.initialReminderAt,
+          params.dueDate,
+          params.status ?? null,
+          Date.now(),
+          noteId,
+        ]
+      )
+      logger.info('Updated note category fields', { noteId, category: params.category })
+    } catch (err) {
+      logger.error('Update note category fields failed', { noteId, params, err })
       throw err
     }
   },

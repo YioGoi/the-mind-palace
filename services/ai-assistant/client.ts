@@ -1,10 +1,11 @@
 import { getAiGatewayUrl } from '../ai/config'
+import { AiGatewayFeature } from '../ai/gateway-types'
 import { AI_ASSISTANT_MODELS, ChatCompletionOptions, callWithFallback } from '../model-router'
 
 export async function callAiAssistant(
   systemPrompt: string,
   userMessage: string,
-  options?: ChatCompletionOptions
+  options?: ChatCompletionOptions & { feature?: AiGatewayFeature }
 ): Promise<string> {
   const endpoint = getAiGatewayUrl()
   if (!endpoint) throw new Error('AI assistant endpoint not set (EXPO_PUBLIC_AI_GATEWAY_URL)')

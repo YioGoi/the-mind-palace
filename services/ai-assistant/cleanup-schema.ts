@@ -15,6 +15,20 @@ export const AI_CLEANUP_PLAN_SCHEMA = {
               type: 'object',
               additionalProperties: false,
               properties: {
+                type: { type: 'string', const: 'move_context_to_category' },
+                contextId: { type: 'string' },
+                targetCategory: {
+                  type: 'string',
+                  enum: ['URGENT', 'HAVE', 'NICE'],
+                },
+                reason: { type: 'string' },
+              },
+              required: ['type', 'contextId', 'targetCategory', 'reason'],
+            },
+            {
+              type: 'object',
+              additionalProperties: false,
+              properties: {
                 type: { type: 'string', const: 'rename_context' },
                 contextId: { type: 'string' },
                 newName: { type: 'string' },

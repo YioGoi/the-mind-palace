@@ -22,12 +22,15 @@ export default function UrgentScreen() {
     doneHintNoteId,
     dismissDoneActionHint,
     dismissDoneHint,
+    dismissUnsortedAiNotice,
     editingContextId,
     editingContextName,
     firstUndoneNoteId,
     handleDelete,
+    handleDeleteContext,
     handleEditContext,
     handleMarkDone,
+    handleMoveContextCategory,
     handleUpdateContext,
     hasSeenDoneActionHint,
     isEditableSection,
@@ -45,6 +48,8 @@ export default function UrgentScreen() {
     sheetVisible,
     shouldShowDoneHint,
     toggleSection,
+    unsortedAiNotice,
+    unsortedSectionId,
   } = useCategoryNotesScreen('URGENT')
 
   return (
@@ -125,6 +130,8 @@ export default function UrgentScreen() {
                       await handleUpdateContext(editingContextId, editingContextName)
                     }
                   }}
+                  onDeleteContext={() => handleDeleteContext(section.id, section.title)}
+                  onMoveContextCategory={() => handleMoveContextCategory(section.id, section.title)}
                   onStartEdit={() => handleEditContext({ id: section.id, title: section.title })}
                   onToggle={() => {
                     if (!isEditingSection) {
@@ -136,6 +143,10 @@ export default function UrgentScreen() {
                   testIDBase={`section-header-${section.id}`}
                   title={isEditingSection ? editingContextName : section.title}
                   titleColor={colors.colorDanger}
+                  notice={section.id === unsortedSectionId && unsortedAiNotice ? {
+                    message: unsortedAiNotice,
+                    onDismiss: () => dismissUnsortedAiNotice('URGENT'),
+                  } : null}
                 />
               )
             }}

@@ -9,7 +9,7 @@ app.use(express.json());
 
 const OPENAI_KEY = process.env.OPENAI_API_KEY;
 
-app.post('/api/ai', async (req, res) => {
+async function handleProxyRequest(req, res) {
   console.log('[Proxy] Incoming request:', JSON.stringify(req.body));
   try {
     if (!OPENAI_KEY) {
@@ -17,13 +17,34 @@ app.post('/api/ai', async (req, res) => {
       return;
     }
 
+    const {
+      installId,
+      feature,
+      model,
+      messages,
+      response_format,
+    } = req.body || {};
+
+    const upstreamBody = {
+      model,
+      messages,
+      response_format,
+    };
+
+    console.log('[Proxy] Request metadata:', JSON.stringify({
+      installId,
+      feature,
+      model,
+      messageCount: Array.isArray(messages) ? messages.length : 0,
+    }));
+
     const response = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${OPENAI_KEY}`,
       },
-      body: JSON.stringify(req.body),
+      body: JSON.stringify(upstreamBody),
     });
     const text = await response.text();
     console.log('[Proxy] OpenAI response status:', response.status);
@@ -33,7 +54,10 @@ app.post('/api/ai', async (req, res) => {
     console.error('[Proxy] Error:', err.message);
     res.status(500).json({ error: err.message });
   }
-});
+}
+
+app.post('/api/ai', handleProxyRequest);
+app.post('/api/ai/chat', handleProxyRequest);
 
 const port = process.env.PORT || 4000;
 app.listen(port, () => console.log(`[Proxy] Listening on port ${port}`));

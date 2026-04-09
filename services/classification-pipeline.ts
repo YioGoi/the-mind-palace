@@ -1,10 +1,12 @@
 import { ContextsRepo } from '../lib/db/contexts-repo'
 import { FeedbackRepo } from '../lib/db/feedback-repo'
 import { NotesRepo } from '../lib/db/notes-repo'
+import { useNoteUiHintsStore } from '../lib/store/note-ui-hints-store'
 import { useNotesStore } from '../lib/store/notes-store'
 import { logger } from '../lib/utils/logger'
 import { callContextEngineAPI } from './context-engine/client'
 import { classifyContextService } from './context-engine/service'
+import { isModelRouterError } from './model-router'
 
 // Helper to wrap and log OpenRouter API call
 import type { Context, NoteInput, UserFeedback } from './context-engine/types'
@@ -21,7 +23,14 @@ async function callContextEngineAPIWithLogging(
     logger.info('OpenRouter API call: response', { result });
     return result;
   } catch (err) {
-    logger.error('OpenRouter API call: error', { error: err });
+    if (isModelRouterError(err) && (err.errorType === 'quota_exceeded' || err.errorType === 'rate_limited')) {
+      logger.warn('OpenRouter API call: handled limit', {
+        errorType: err.errorType,
+        message: err.message,
+      });
+    } else {
+      logger.error('OpenRouter API call: error', { error: err });
+    }
     throw err;
   }
 }
@@ -120,6 +129,7 @@ export async function classifyNoteAsync(noteId: string) {
     return result;
   } catch (e) {
     let errorMsg = '';
+    let handledLimit = false;
     if (e instanceof Error) {
       errorMsg = e.message;
     } else if (typeof e === 'string') {
@@ -127,7 +137,23 @@ export async function classifyNoteAsync(noteId: string) {
     } else {
       errorMsg = JSON.stringify(e);
     }
-    logger.error('Classification failed', { noteId, error: errorMsg });
+
+    if (isModelRouterError(e) && (e.errorType === 'quota_exceeded' || e.errorType === 'rate_limited')) {
+      handledLimit = true
+      useNoteUiHintsStore.getState().showUnsortedAiNotice(
+        note.category,
+        e.errorType === 'quota_exceeded'
+          ? 'AI quota reached. New notes will stay in Unsorted for now.'
+          : 'AI is busy right now. New notes may stay in Unsorted for now.'
+      )
+    }
+
+    if (handledLimit) {
+      logger.warn('Classification handled fallback', { noteId, error: errorMsg })
+    } else {
+      logger.error('Classification failed', { noteId, error: errorMsg });
+    }
+
     if (note && NotesRepo && typeof NotesRepo.updateClassification === 'function') {
       await NotesRepo.updateClassification(noteId, null, 'error');
       

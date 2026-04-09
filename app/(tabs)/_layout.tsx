@@ -2,7 +2,6 @@ import { Tabs } from 'expo-router';
 import React from 'react';
 import { StyleSheet, View } from 'react-native';
 
-import { useThemeStore } from '@/lib/store/theme-store';
 import AmbientBackgroundLayer from '@/components/ambient-background-layer';
 import { HapticTab } from '@/components/haptic-tab';
 import { IconSymbol } from '@/components/ui/icon-symbol';
@@ -10,6 +9,7 @@ import { Colors } from '@/constants/theme';
 import { useAppTheme } from '@/hooks/use-app-theme';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { useReducedMotion } from '@/hooks/use-reduced-motion';
+import { useThemeStore } from '@/lib/store/theme-store';
 
 export default function TabLayout() {
   const colorScheme = useColorScheme();
@@ -58,10 +58,13 @@ export default function TabLayout() {
           },
           tabBarButton: HapticTab,
           tabBarIconStyle: {
-            marginTop: 8,
+            marginTop: 0,
+            marginBottom: 0,
           },
           tabBarItemStyle: {
-            paddingTop: 6,
+            paddingTop: 0,
+            paddingBottom: 0,
+            height: 44,
           },
           tabBarStyle: {
             backgroundColor: colors.colorBgMain,
@@ -69,6 +72,9 @@ export default function TabLayout() {
             borderTopWidth: 0,
             elevation: 0,
             shadowOpacity: 0,
+            height: 64,
+            paddingTop: 0,
+            paddingBottom: 6,
           },
         })}
       >

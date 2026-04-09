@@ -1,4 +1,6 @@
 import { logger } from '../lib/utils/logger'
+import { getOrCreateInstallId } from '../lib/services/install-id'
+import { AiGatewayFeature } from './ai/gateway-types'
 import { getFallbackModel, getPrimaryModel } from './ai/config'
 
 // ---------------------------------------------------------------------------
@@ -18,14 +20,14 @@ export const MODEL_CONFIGS: ModelConfig[] = [
     label: 'GPT-5 mini',
     enabled: true,
     priority: 1,
-    timeoutMs: 30_000,
+    timeoutMs: 25_000,
   },
   {
     id: getFallbackModel(),
     label: 'GPT-5 nano',
     enabled: true,
     priority: 2,
-    timeoutMs: 30_000,
+    timeoutMs: 15_000,
   },
 ]
 
@@ -50,9 +52,12 @@ export const CONTEXT_ENGINE_MODELS = [Models.PRIMARY, Models.FALLBACK] as const
  */
 export type ErrorType =
   | 'rate_limit'           // 429  — RETRYABLE
+  | 'rate_limited'         // 429 from our gateway — NOT retryable
+  | 'quota_exceeded'       // 429 from our gateway — NOT retryable
   | 'provider_unavailable' // 5xx or upstream error — RETRYABLE
   | 'timeout'              // network/AbortController timeout — RETRYABLE
   | 'auth_error'           // 401 / 403 — NOT retryable (fix config)
+  | 'upgrade_required'     // 403 from our gateway — NOT retryable
   | 'bad_request'          // 400 — NOT retryable (fix payload)
   | 'parsing_error'        // 200 but can't extract content — NOT retryable
   | 'unknown'              // anything else — NOT retryable
@@ -67,7 +72,11 @@ function classifyHttpError(status: number, body: string): { errorType: ErrorType
   let parsed: any = null
   try { parsed = JSON.parse(body) } catch { /* raw body */ }
   const provider: string | undefined = parsed?.error?.metadata?.provider_name ?? undefined
+  const code = parsed?.error?.code
+  if (status === 429 && code === 'rate_limited') return { errorType: 'rate_limited', provider }
+  if (status === 429 && code === 'quota_exceeded') return { errorType: 'quota_exceeded', provider }
   if (status === 429) return { errorType: 'rate_limit', provider }
+  if (status === 403 && code === 'upgrade_required') return { errorType: 'upgrade_required', provider }
   if (status === 401 || status === 403) return { errorType: 'auth_error', provider }
   if (status === 400) return { errorType: 'bad_request', provider }
   if (status >= 500) return { errorType: 'provider_unavailable', provider }
@@ -91,10 +100,38 @@ export type ModelCallFailure = {
   label: string
   errorType: ErrorType
   status?: number
+  code?: string
   provider?: string
   message: string
   latencyMs: number
   retryable: boolean
+  retryAfterSeconds?: number
+}
+
+export class ModelRouterError extends Error {
+  errorType: ErrorType
+  status?: number
+  code?: string
+  retryAfterSeconds?: number
+
+  constructor(params: {
+    message: string
+    errorType: ErrorType
+    status?: number
+    code?: string
+    retryAfterSeconds?: number
+  }) {
+    super(params.message)
+    this.name = 'ModelRouterError'
+    this.errorType = params.errorType
+    this.status = params.status
+    this.code = params.code
+    this.retryAfterSeconds = params.retryAfterSeconds
+  }
+}
+
+export function isModelRouterError(error: unknown): error is ModelRouterError {
+  return error instanceof ModelRouterError
 }
 
 export type ModelCallResult = ModelCallSuccess | ModelCallFailure
@@ -106,6 +143,7 @@ type ChatMessage = { role: 'system' | 'user' | 'assistant'; content: string }
 
 export type ChatCompletionOptions = {
   timeoutMs?: number
+  feature?: AiGatewayFeature
   responseFormat?: {
     type: 'json_schema'
     json_schema: {
@@ -128,10 +166,13 @@ export async function callModel(
   const timer = setTimeout(() => controller.abort(), timeoutMs)
 
   try {
+    const installId = await getOrCreateInstallId()
     const res = await fetch(endpoint, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
+        installId,
+        feature: options?.feature ?? 'assistant_capture',
         model: config.id,
         messages,
         response_format: options?.responseFormat,
@@ -144,14 +185,21 @@ export async function callModel(
 
     if (!res.ok) {
       const { errorType, provider } = classifyHttpError(res.status, body)
+      let parsed: any = null
+      try { parsed = JSON.parse(body) } catch { /* ignore */ }
+      const code = parsed?.error?.code
+      const retryAfterSeconds =
+        typeof parsed?.error?.retryAfterSeconds === 'number' ? parsed.error.retryAfterSeconds : undefined
       // PHASE 2 — Human-readable log
       logger.warn(`ModelRouter ✗ [${config.label}] ${errorType.toUpperCase()}`, {
         model: config.id,
         status: res.status,
+        code,
         errorType,
         provider,
         latencyMs,
         retryable: isRetryable(errorType),
+        retryAfterSeconds,
         body: body.slice(0, 400),
       })
       return {
@@ -160,10 +208,12 @@ export async function callModel(
         label: config.label,
         errorType,
         status: res.status,
+        code,
         provider,
-        message: `HTTP ${res.status}: ${body.slice(0, 200)}`,
+        message: parsed?.error?.message ?? `HTTP ${res.status}: ${body.slice(0, 200)}`,
         latencyMs,
         retryable: isRetryable(errorType),
+        retryAfterSeconds,
       }
     }
 
@@ -249,11 +299,23 @@ export async function callWithFallback(
         errorType: result.errorType,
         hint: result.errorType === 'auth_error'
           ? 'Check EXPO_PUBLIC_AI_GATEWAY_URL and API key config'
+          : result.errorType === 'upgrade_required'
+          ? 'User needs premium access on the AI gateway'
+          : result.errorType === 'quota_exceeded'
+          ? 'User has exhausted the monthly AI quota'
+          : result.errorType === 'rate_limited'
+          ? 'User hit a short-term AI rate limit'
           : result.errorType === 'bad_request'
           ? 'Check the request payload / prompt format'
           : 'Check model response format',
       })
-      throw new Error(`Non-retryable error (${result.errorType}) from ${result.label}: ${result.message}`)
+      throw new ModelRouterError({
+        message: `Non-retryable error (${result.errorType}) from ${result.label}: ${result.message}`,
+        errorType: result.errorType,
+        status: result.status,
+        code: result.code,
+        retryAfterSeconds: result.retryAfterSeconds,
+      })
     }
 
     // Retryable: log and continue

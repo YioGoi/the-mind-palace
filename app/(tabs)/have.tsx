@@ -22,12 +22,15 @@ export default function HaveScreen() {
     doneHintNoteId,
     dismissDoneActionHint,
     dismissDoneHint,
+    dismissUnsortedAiNotice,
     editingContextId,
     editingContextName,
     firstUndoneNoteId,
     handleDelete,
+    handleDeleteContext,
     handleEditContext,
     handleMarkDone,
+    handleMoveContextCategory,
     handleUpdateContext,
     hasSeenDoneActionHint,
     isEditableSection,
@@ -45,6 +48,8 @@ export default function HaveScreen() {
     sheetVisible,
     shouldShowDoneHint,
     toggleSection,
+    unsortedAiNotice,
+    unsortedSectionId,
   } = useCategoryNotesScreen('HAVE')
 
   return (
@@ -125,6 +130,8 @@ export default function HaveScreen() {
                       await handleUpdateContext(editingContextId, editingContextName)
                     }
                   }}
+                  onDeleteContext={() => handleDeleteContext(section.id, section.title)}
+                  onMoveContextCategory={() => handleMoveContextCategory(section.id, section.title)}
                   onStartEdit={() => handleEditContext({ id: section.id, title: section.title })}
                   onToggle={() => {
                     if (!isEditingSection) {
@@ -136,6 +143,10 @@ export default function HaveScreen() {
                   testIDBase={`section-header-${section.id}`}
                   title={isEditingSection ? editingContextName : section.title}
                   titleColor={colors.colorSuccess}
+                  notice={section.id === unsortedSectionId && unsortedAiNotice ? {
+                    message: unsortedAiNotice,
+                    onDismiss: () => dismissUnsortedAiNotice('HAVE'),
+                  } : null}
                 />
               )
             }}

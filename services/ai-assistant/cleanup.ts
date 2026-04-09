@@ -3,6 +3,7 @@ import { FeedbackRepo } from '../../lib/db/feedback-repo'
 import { NotesRepo } from '../../lib/db/notes-repo'
 import { useNotesStore } from '../../lib/store/notes-store'
 import { logger } from '../../lib/utils/logger'
+import { moveContextToCategory } from '../../lib/services/context-category-move'
 import { callAiAssistant } from './client'
 import { buildCleanupPlannerPrompt } from './cleanup-prompt'
 import { AI_CLEANUP_PLAN_SCHEMA } from './cleanup-schema'
@@ -136,6 +137,15 @@ function sanitizeCleanupPlan(
         return [{ type: 'delete_empty_context', contextId: action.contextId, reason }]
       }
 
+      if (action.type === 'move_context_to_category') {
+        const context = contextMap.get(action.contextId)
+        if (!context) return []
+        if (context.category === action.targetCategory) return []
+        const contextNoteIds = notes.filter((note) => note.contextId === context.id).map((note) => note.id)
+        if (contextNoteIds.length === 0) return []
+        return [{ type: 'move_context_to_category', contextId: action.contextId, targetCategory: action.targetCategory, reason }]
+      }
+
       return []
     })
 
@@ -190,7 +200,8 @@ export async function planCleanup(userMessage: string): Promise<CleanupPlan> {
     ),
     userMessage,
     {
-      timeoutMs: 60_000,
+      feature: 'assistant_cleanup',
+      timeoutMs: 25_000,
       responseFormat: {
         type: 'json_schema',
         json_schema: {
@@ -332,6 +343,26 @@ export async function applyCleanupPlan(plan: CleanupPlan): Promise<CleanupApplyR
     await refreshState()
     appliedCount += 1
     details.push(`Deleted empty context "${context.name}".`)
+  }
+
+  for (const action of normalizedPlan.actions.filter((item) => item.type === 'move_context_to_category')) {
+    const context = contexts.find((item) => item.id === action.contextId)
+    if (!context) {
+      skippedCount += 1
+      details.push(`Skipped category move for missing context ${action.contextId}.`)
+      continue
+    }
+
+    if (context.category === action.targetCategory) {
+      skippedCount += 1
+      details.push(`Skipped moving "${context.name}" because it is already in ${action.targetCategory}.`)
+      continue
+    }
+
+    const result = await moveContextToCategory(action.contextId, action.targetCategory)
+    await refreshState()
+    appliedCount += 1
+    details.push(`Moved "${result.contextName}" to ${result.toCategory} with ${result.movedNoteCount} note${result.movedNoteCount === 1 ? '' : 's'}.`)
   }
 
   await useNotesStore.getState().loadNotes()

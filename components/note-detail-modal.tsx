@@ -4,9 +4,11 @@ import { logger } from '@/lib/utils/logger'
 import { DateTimeField } from '@/components/ui/date-time-field'
 import { IconSymbol } from '@/components/ui/icon-symbol'
 import { useAppTheme } from '@/hooks/use-app-theme'
+import { useKeyboardOffset } from '@/hooks/use-keyboard-offset'
 import React, { useCallback, useEffect, useState } from 'react'
 import {
   Alert,
+  Animated,
   Modal,
   ScrollView,
   StyleSheet,
@@ -36,6 +38,7 @@ export default function NoteDetailModal({
 }: Props) {
   const insets = useSafeAreaInsets()
   const { colors } = useAppTheme()
+  const { keyboardShift } = useKeyboardOffset()
   const [note, setNote] = useState<Note | null>(null)
   const [titleDraft, setTitleDraft] = useState('')
   const [bodyDraft, setBodyDraft] = useState('')
@@ -211,6 +214,7 @@ export default function NoteDetailModal({
 
   return (
     <Modal visible={visible} animationType="slide" presentationStyle="fullScreen">
+      <Animated.View style={[styles.container, { backgroundColor: colors.colorBgMain, transform: [{ translateY: keyboardShift }] }]}>
       <SafeAreaView style={[styles.container, { backgroundColor: colors.colorBgMain }]} edges={['left', 'right', 'bottom']}>
         {/* Header */}
         <View style={[styles.header, { paddingTop: insets.top + 12, borderBottomColor: colors.colorBorder, backgroundColor: colors.colorBgElevated }]}>
@@ -368,6 +372,7 @@ export default function NoteDetailModal({
 
         {/* Date Pickers removed, now handled by DateTimeField */}
       </SafeAreaView>
+      </Animated.View>
     </Modal>
   )
 }

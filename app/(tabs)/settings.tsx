@@ -4,10 +4,12 @@ import { ThemedText } from '@/components/themed-text'
 import { ThemedView } from '@/components/themed-view'
 import { useAppTheme } from '@/hooks/use-app-theme'
 import { prepareCleanupQaDataset } from '@/lib/services/cleanup-qa-seed'
+import { getOrCreateInstallId } from '@/lib/services/install-id'
 import { PremiumCleanupNudge } from '@/lib/services/premium-cleanup-nudge'
 import { useAiUpsellStore } from '@/lib/store/ai-upsell-store'
 import { useNoteUiHintsStore } from '@/lib/store/note-ui-hints-store'
 import { ThemePreference, useThemeStore } from '@/lib/store/theme-store'
+import { AiRemoteUsage, fetchAiRemoteUsage, formatUsageProgress } from '@/lib/utils/ai-usage'
 import { getSubscriptionCta } from '@/lib/utils/settings-subscription'
 import React, { useState } from 'react'
 import { ActivityIndicator, Button, ScrollView, StyleSheet, Switch, Text, TouchableOpacity, View } from 'react-native'
@@ -33,9 +35,64 @@ export default function SettingsScreen() {
   const [diagRunning, setDiagRunning] = useState(false)
   const [diagResults, setDiagResults] = useState<ModelCallResult[] | null>(null)
   const [premiumSheetVisible, setPremiumSheetVisible] = useState(false)
+  const [installId, setInstallId] = useState<string | null>(null)
+  const [remoteUsage, setRemoteUsage] = useState<AiRemoteUsage | null>(null)
+  const [remoteUsageLoading, setRemoteUsageLoading] = useState(false)
+  const [remoteUsageError, setRemoteUsageError] = useState<string | null>(null)
+  const gatewayUrl = getAiGatewayUrl()
 
+  React.useEffect(() => {
+    let active = true
+
+    getOrCreateInstallId()
+      .then((value) => {
+        if (active) {
+          setInstallId(value)
+        }
+      })
+      .catch(() => {
+        if (active) {
+          setInstallId(null)
+        }
+      })
+
+    return () => {
+      active = false
+    }
+  }, [])
+
+  React.useEffect(() => {
+    let active = true
+
+    async function loadRemoteUsage() {
+      if (!gatewayUrl || !installId) return
+      setRemoteUsageLoading(true)
+      setRemoteUsageError(null)
+      try {
+        const usage = await fetchAiRemoteUsage(gatewayUrl, installId)
+        if (active) {
+          setRemoteUsage(usage)
+        }
+      } catch (error) {
+        if (active) {
+          setRemoteUsage(null)
+          setRemoteUsageError(error instanceof Error ? error.message : 'Failed to load AI usage.')
+        }
+      } finally {
+        if (active) {
+          setRemoteUsageLoading(false)
+        }
+      }
+    }
+
+    loadRemoteUsage()
+
+    return () => {
+      active = false
+    }
+  }, [gatewayUrl, installId])
   async function handleRunDiagnostics() {
-    const endpoint = getAiGatewayUrl()
+    const endpoint = gatewayUrl
     if (!endpoint) {
       setDiagResults(null)
       return
@@ -47,6 +104,21 @@ export default function SettingsScreen() {
       setDiagResults(results)
     } finally {
       setDiagRunning(false)
+    }
+  }
+
+  async function handleRefreshRemoteUsage() {
+    if (!gatewayUrl || !installId) return
+    setRemoteUsageLoading(true)
+    setRemoteUsageError(null)
+    try {
+      const usage = await fetchAiRemoteUsage(gatewayUrl, installId)
+      setRemoteUsage(usage)
+    } catch (error) {
+      setRemoteUsage(null)
+      setRemoteUsageError(error instanceof Error ? error.message : 'Failed to load AI usage.')
+    } finally {
+      setRemoteUsageLoading(false)
     }
   }
 
@@ -78,7 +150,10 @@ export default function SettingsScreen() {
 
   return (
     <SafeAreaView style={[styles.safeArea, { backgroundColor: 'transparent' }]}>
-      <ScrollView contentContainerStyle={styles.container}>
+      <ScrollView
+        contentContainerStyle={styles.container}
+        keyboardShouldPersistTaps="handled"
+      >
         <ThemedText type="title">Settings</ThemedText>
 
         <ThemedView style={styles.section}>
@@ -130,13 +205,7 @@ export default function SettingsScreen() {
         <ThemedView style={styles.section}>
           <ThemedText type="subtitle">AI setup</ThemedText>
           <ThemedText>Plan: {getAiPlan()}</ThemedText>
-          <ThemedText>Access channel: {entitlement.channel}</ThemedText>
           <ThemedText>Premium access: {entitlement.hasPremiumAccess ? 'enabled' : 'disabled'}</ThemedText>
-          <ThemedText>Upsell marketing: {aiUpsellMarketingEnabled ? 'enabled' : 'disabled'}</ThemedText>
-          <ThemedText>Auto-classify: {aiCapabilities.canAutoClassifyNotes ? 'enabled' : 'disabled'}</ThemedText>
-          <ThemedText>Assistant planner: {aiCapabilities.canUseAssistantPlanner ? 'enabled' : 'fallback note capture'}</ThemedText>
-          <ThemedText>Model: {getPrimaryModel()}</ThemedText>
-          <ThemedText>Gateway: {getAiGatewayUrl() ?? 'Not configured'}</ThemedText>
           {!__DEV__ ? (
             <View style={[styles.settingRow, { borderTopColor: colors.colorBorder }]}>
               <View style={styles.settingCopy}>
@@ -203,6 +272,61 @@ export default function SettingsScreen() {
             </View>
           ) : null}
         </ThemedView>
+
+        {__DEV__ ? (
+          <ThemedView style={styles.section}>
+            <ThemedText type="subtitle">Developer Tools</ThemedText>
+            <ThemedText>Internal AI and monetization diagnostics for development builds.</ThemedText>
+            <View style={[styles.settingRow, { borderTopColor: colors.colorBorder }]}>
+              <View style={styles.settingCopy}>
+                <ThemedText type="defaultSemiBold">AI internals</ThemedText>
+                <ThemedText>Access channel: {entitlement.channel}</ThemedText>
+                <ThemedText>Upsell marketing: {aiUpsellMarketingEnabled ? 'enabled' : 'disabled'}</ThemedText>
+                <ThemedText>Assistant planner: {aiCapabilities.canUseAssistantPlanner ? 'enabled' : 'fallback note capture'}</ThemedText>
+                <ThemedText>Model: {getPrimaryModel()}</ThemedText>
+                <ThemedText>Gateway: {gatewayUrl ?? 'Not configured'}</ThemedText>
+                <ThemedText selectable>AI install ID: {installId ?? 'Loading...'}</ThemedText>
+              </View>
+            </View>
+            <View style={[styles.settingRow, { borderTopColor: colors.colorBorder }]}>
+              <View style={styles.settingCopy}>
+                <ThemedText type="defaultSemiBold">Remote AI usage</ThemedText>
+                {remoteUsage ? (
+                  <>
+                    <ThemedText>Remote plan: {remoteUsage.plan}</ThemedText>
+                    <ThemedText>Quota profile: {remoteUsage.quotaProfile}</ThemedText>
+                    <ThemedText>Billing period: {remoteUsage.period}</ThemedText>
+                    <ThemedText>
+                      Requests: {formatUsageProgress(remoteUsage.usage.requestCount, remoteUsage.limits?.monthlyRequestCount)}
+                    </ThemedText>
+                    <ThemedText>
+                      Input tokens: {formatUsageProgress(remoteUsage.usage.inputTokens, remoteUsage.limits?.monthlyInputTokens)}
+                    </ThemedText>
+                    <ThemedText>
+                      Output tokens: {formatUsageProgress(remoteUsage.usage.outputTokens, remoteUsage.limits?.monthlyOutputTokens)}
+                    </ThemedText>
+                    <ThemedText>Total tokens: {remoteUsage.usage.totalTokens}</ThemedText>
+                    <ThemedText>Requests/min: {remoteUsage.limits?.requestsPerMinute ?? 'n/a'}</ThemedText>
+                  </>
+                ) : remoteUsageLoading ? (
+                  <ThemedText>Loading remote usage…</ThemedText>
+                ) : (
+                  <ThemedText>{remoteUsageError ?? 'Remote usage not loaded yet.'}</ThemedText>
+                )}
+              </View>
+              <TouchableOpacity
+                style={[styles.subscriptionButton, { backgroundColor: colors.colorBgMuted, borderColor: colors.colorBorder, borderWidth: 1 }]}
+                onPress={handleRefreshRemoteUsage}
+                disabled={remoteUsageLoading || !gatewayUrl || !installId}
+                activeOpacity={0.85}
+              >
+                {remoteUsageLoading
+                  ? <ActivityIndicator size="small" color={colors.colorTextMain} />
+                  : <Text style={[styles.subscriptionButtonText, { color: colors.colorTextMain }]}>Refresh usage</Text>}
+              </TouchableOpacity>
+            </View>
+          </ThemedView>
+        ) : null}
 
         {__DEV__ ? (
           <ThemedView style={styles.section}>

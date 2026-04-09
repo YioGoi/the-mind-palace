@@ -5,6 +5,9 @@ export const CLEANUP_DEGRADED_MESSAGE =
   "Cleanup planning is temporarily unavailable right now. Nothing changed, and I didn't save this as a note."
 export const CLEANUP_FAILURE_MESSAGE =
   "I couldn't generate a cleanup plan right now. Nothing changed in your Mind Palace."
+export const AI_UPGRADE_REQUIRED_MESSAGE = 'This AI feature requires Premium access on the backend. Please review your subscription settings.'
+export const AI_QUOTA_EXCEEDED_MESSAGE = "You've reached your monthly AI usage limit."
+export const AI_RATE_LIMITED_MESSAGE = 'AI is getting too many requests right now. Please try again shortly.'
 export const CLEANUP_DISMISS_MESSAGE = 'Cleanup plan dismissed. Nothing changed.'
 export const CLEANUP_EMPTY_SELECTION_MESSAGE = 'Select at least one cleanup action to apply.'
 
@@ -44,6 +47,27 @@ export function resolveAssistantOutcome(intent: AssistantIntent, result: Assista
   }
 
   if (!result.ok) {
+    if (result.reason === 'upgrade_required') {
+      return {
+        kind: 'upgrade_required' as const,
+        message: AI_UPGRADE_REQUIRED_MESSAGE,
+      }
+    }
+
+    if (result.reason === 'quota_exceeded') {
+      return {
+        kind: 'quota_exceeded' as const,
+        message: AI_QUOTA_EXCEEDED_MESSAGE,
+      }
+    }
+
+    if (result.reason === 'rate_limited') {
+      return {
+        kind: 'rate_limited' as const,
+        message: AI_RATE_LIMITED_MESSAGE,
+      }
+    }
+
     if (intent === 'cleanup') {
       return {
         kind: 'cleanup_failed' as const,
@@ -75,16 +99,15 @@ export function resolveAssistantOutcome(intent: AssistantIntent, result: Assista
   if (result.result.createdNotes.length === 0) {
     return {
       kind: 'capture_no_notes' as const,
-      message: "Sorry, I couldn't find a note to create from that.",
+      message: result.result.summary,
     }
   }
 
-  const summary = result.result.createdNotes.map((note) => `• ${note.title}`).join('\n')
-  const listWord = result.result.createdNotes.length === 1 ? 'note' : 'notes'
+  const operationSummary = result.result.operationLog.map((line) => `• ${line}`).join('\n')
 
   return {
     kind: 'capture_success' as const,
-    message: `${result.result.summary}\n\nCreated ${result.result.createdNotes.length} ${listWord}:\n${summary}`,
+    message: `${result.result.summary}\n\nWhat I handled:\n${operationSummary}`,
     warnings: result.result.warnings,
   }
 }

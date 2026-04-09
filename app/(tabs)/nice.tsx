@@ -22,12 +22,15 @@ export default function NiceScreen() {
     doneHintNoteId,
     dismissDoneActionHint,
     dismissDoneHint,
+    dismissUnsortedAiNotice,
     editingContextId,
     editingContextName,
     firstUndoneNoteId,
     handleDelete,
+    handleDeleteContext,
     handleEditContext,
     handleMarkDone,
+    handleMoveContextCategory,
     handleUpdateContext,
     hasSeenDoneActionHint,
     isEditableSection,
@@ -45,6 +48,8 @@ export default function NiceScreen() {
     sheetVisible,
     shouldShowDoneHint,
     toggleSection,
+    unsortedAiNotice,
+    unsortedSectionId,
   } = useCategoryNotesScreen('NICE')
 
   return (
@@ -125,6 +130,8 @@ export default function NiceScreen() {
                       await handleUpdateContext(editingContextId, editingContextName)
                     }
                   }}
+                  onDeleteContext={() => handleDeleteContext(section.id, section.title)}
+                  onMoveContextCategory={() => handleMoveContextCategory(section.id, section.title)}
                   onStartEdit={() => handleEditContext({ id: section.id, title: section.title })}
                   onToggle={() => {
                     if (!isEditingSection) {
@@ -136,6 +143,10 @@ export default function NiceScreen() {
                   testIDBase={`section-header-${section.id}`}
                   title={isEditingSection ? editingContextName : section.title}
                   titleColor={colors.colorAccent}
+                  notice={section.id === unsortedSectionId && unsortedAiNotice ? {
+                    message: unsortedAiNotice,
+                    onDismiss: () => dismissUnsortedAiNotice('NICE'),
+                  } : null}
                 />
               )
             }}

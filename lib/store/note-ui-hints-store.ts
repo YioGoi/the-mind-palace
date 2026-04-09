@@ -2,11 +2,16 @@ import { create } from 'zustand'
 import { SettingsRepo } from '../db/settings-repo'
 import { logger } from '../utils/logger'
 
+type Category = 'HAVE' | 'NICE' | 'URGENT'
+
 type NoteUiHintsStore = {
   hydrated: boolean
   hasSeenDoneActionHint: boolean
+  unsortedAiNoticeByCategory: Partial<Record<Category, string>>
   initialize: () => Promise<void>
   dismissDoneActionHint: () => Promise<void>
+  showUnsortedAiNotice: (category: Category, message: string) => void
+  dismissUnsortedAiNotice: (category: Category) => void
   resetDoneActionHintForDev: () => Promise<void>
 }
 
@@ -15,6 +20,7 @@ export const DONE_ACTION_HINT_KEY = 'note_done_action_hint_seen_v2'
 export const useNoteUiHintsStore = create<NoteUiHintsStore>((set, get) => ({
   hydrated: false,
   hasSeenDoneActionHint: false,
+  unsortedAiNoticeByCategory: {},
 
   initialize: async () => {
     try {
@@ -40,8 +46,25 @@ export const useNoteUiHintsStore = create<NoteUiHintsStore>((set, get) => ({
     }
   },
 
+  showUnsortedAiNotice: (category, message) => {
+    set(state => ({
+      unsortedAiNoticeByCategory: {
+        ...state.unsortedAiNoticeByCategory,
+        [category]: message,
+      },
+    }))
+  },
+
+  dismissUnsortedAiNotice: (category) => {
+    set(state => {
+      const next = { ...state.unsortedAiNoticeByCategory }
+      delete next[category]
+      return { unsortedAiNoticeByCategory: next }
+    })
+  },
+
   resetDoneActionHintForDev: async () => {
-    set({ hydrated: false, hasSeenDoneActionHint: false })
+    set({ hydrated: false, hasSeenDoneActionHint: false, unsortedAiNoticeByCategory: {} })
     try {
       await SettingsRepo.init()
       await SettingsRepo.delete(DONE_ACTION_HINT_KEY)

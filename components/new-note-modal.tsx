@@ -1,6 +1,7 @@
 import NewNoteReminderSheet from '@/components/new-note-reminder-sheet'
 import { ThemedText } from '@/components/themed-text'
 import { useAppTheme } from '@/hooks/use-app-theme'
+import { useKeyboardOffset } from '@/hooks/use-keyboard-offset'
 import { getAiCapabilities } from '@/services/ai/config'
 import React, { useEffect, useRef, useState } from 'react'
 import {
@@ -8,7 +9,6 @@ import {
   Animated,
   Easing,
   Keyboard,
-  KeyboardAvoidingView,
   Modal,
   Platform,
   StyleSheet,
@@ -77,9 +77,9 @@ export const NewNoteModal: React.FC<Props> = ({ visible, onClose, category, onCr
   const [contexts, setContexts] = useState<{ id: string; name: string }[]>([])
   const [selectedExistingContextId, setSelectedExistingContextId] = useState<string | null>(null)
   const [isCreatingNewContext, setIsCreatingNewContext] = useState(false)
-  const [keyboardVisible, setKeyboardVisible] = useState(false)
   const [renderModal, setRenderModal] = useState(visible)
   const [step, setStep] = useState<ModalStep>(1)
+  const { keyboardShift, keyboardVisible } = useKeyboardOffset()
 
   const backdropOpacity = useState(() => new Animated.Value(visible ? 1 : 0))[0]
   const panelTranslateY = useState(() => new Animated.Value(visible ? 0 : 28))[0]
@@ -178,20 +178,6 @@ export const NewNoteModal: React.FC<Props> = ({ visible, onClose, category, onCr
       if (finished) setRenderModal(false)
     })
   }, [visible, backdropOpacity, panelOpacity, panelTranslateY])
-
-  useEffect(() => {
-    const showSub = Platform.OS === 'ios'
-      ? Keyboard.addListener('keyboardWillShow', () => setKeyboardVisible(true))
-      : Keyboard.addListener('keyboardDidShow', () => setKeyboardVisible(true))
-    const hideSub = Platform.OS === 'ios'
-      ? Keyboard.addListener('keyboardWillHide', () => setKeyboardVisible(false))
-      : Keyboard.addListener('keyboardDidHide', () => setKeyboardVisible(false))
-
-    return () => {
-      showSub.remove()
-      hideSub.remove()
-    }
-  }, [])
 
   useEffect(() => {
     if (!visible || !isCreatingNewContext) return
@@ -359,11 +345,7 @@ export const NewNoteModal: React.FC<Props> = ({ visible, onClose, category, onCr
   return (
     <Modal visible={renderModal} transparent animationType="none" onRequestClose={handleClose}>
       <Animated.View style={[styles.backdrop, { opacity: backdropOpacity }]}>
-        <KeyboardAvoidingView
-          style={styles.keyboardShell}
-          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-          keyboardVerticalOffset={0}
-        >
+        <View style={styles.keyboardShell}>
           <Animated.View
             style={[
               styles.panel,
@@ -374,7 +356,14 @@ export const NewNoteModal: React.FC<Props> = ({ visible, onClose, category, onCr
                 marginTop: panelTopInset,
                 height: panelHeight,
                 opacity: panelOpacity,
-                transform: [{ translateY: panelTranslateY }],
+                transform: [
+                  {
+                    translateY:
+                      Platform.OS === 'ios'
+                        ? Animated.add(panelTranslateY, Animated.multiply(keyboardShift, 0.92))
+                        : panelTranslateY,
+                  },
+                ],
               },
             ]}
           >
@@ -619,7 +608,7 @@ export const NewNoteModal: React.FC<Props> = ({ visible, onClose, category, onCr
               </View>
             </TouchableWithoutFeedback>
           </Animated.View>
-        </KeyboardAvoidingView>
+        </View>
       </Animated.View>
 
       <NewNoteReminderSheet

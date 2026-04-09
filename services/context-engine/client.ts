@@ -14,7 +14,8 @@ export async function callContextEngineAPI(
   return callWithFallback(
     endpoint,
     [{ role: 'user', content: userMessage }],
-    CONTEXT_ENGINE_MODELS
+    CONTEXT_ENGINE_MODELS,
+    { feature: 'context_assignment' }
   )
 }
 
@@ -26,10 +27,8 @@ export async function testCallContextEngineAPI() {
   const userMessage = 'Classify this note';
   try {
     const result = await callContextEngineAPI(note, contexts, feedback, userMessage);
-    // eslint-disable-next-line no-console
     return result;
   } catch (e) {
-    // eslint-disable-next-line no-console
     throw e;
   }
 }

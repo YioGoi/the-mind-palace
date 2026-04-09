@@ -64,6 +64,9 @@ function createDb() {
         row.name = params[1]
         row.category = params[2]
         row.createdAt = params[3]
+      } else if (table === 'app_settings') {
+        row.key = params[0]
+        row.value = params[1]
       } else {
         // generic fallback
         Object.assign(row, params.reduce((acc, v, i) => ({ ...acc, ['c' + i]: v }), {}))
@@ -156,6 +159,29 @@ function createDb() {
       })
       // Map back to expected column names if c0.. format
       return Promise.resolve(found.map((r) => normalizeRow(r)))
+    }
+
+    const selColsWhere = sql.match(/SELECT\s+(.+)\s+FROM\s+(\w+)\s+WHERE\s+(\w+)\s*=\s*\?/i)
+    if (selColsWhere) {
+      const columns = selColsWhere[1].split(',').map((value) => value.trim())
+      const table = selColsWhere[2]
+      const col = selColsWhere[3]
+      const val = params[0]
+      const t = tables[table]
+      if (!t) return Promise.resolve([])
+      const found = t.rows
+        .filter((r) => {
+          if (col === 'id') return r.id === val
+          return r[col] === val
+        })
+        .map((r) => {
+          const normalized = normalizeRow(r)
+          return columns.reduce((acc, key) => {
+            acc[key] = normalized[key]
+            return acc
+          }, {})
+        })
+      return Promise.resolve(found)
     }
 
     const selAll = sql.match(/SELECT \* FROM\s+(\w+)/i)

@@ -1,24 +1,21 @@
 import { useAppTheme } from '@/hooks/use-app-theme'
+import { useKeyboardOffset } from '@/hooks/use-keyboard-offset'
 import React, { useCallback, useRef, useState } from 'react'
 import {
-    ActivityIndicator,
-    FlatList,
-    Keyboard,
-    KeyboardAvoidingView,
-    Modal,
-    Platform,
-    StyleSheet,
-    Text,
-    TextInput,
-    TouchableOpacity,
-    View,
+  ActivityIndicator,
+  Animated,
+  FlatList,
+  Modal,
+  Platform,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
 } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
-import { useAiAssistantStore } from '../lib/store/ai-assistant-store'
-import { getAiCapabilities } from '../services/ai/config'
 import { createNote } from '../lib/services/note-creator'
-import { applyAiCleanupPlan, detectAssistantIntent, runAiAssistant } from '../services/ai-assistant/service'
-import { AssistantMessage, CleanupPlan } from '../services/ai-assistant/types'
+import { useAiAssistantStore } from '../lib/store/ai-assistant-store'
 import {
   buildSelectedCleanupPlan,
   CLEANUP_DISMISS_MESSAGE,
@@ -27,17 +24,28 @@ import {
   resolveAssistantOutcome,
   toggleCleanupActionSelection,
 } from '../services/ai-assistant/modal-logic'
+import { applyAiCleanupPlan, detectAssistantIntent, runAiAssistant } from '../services/ai-assistant/service'
+import { AssistantMessage, CleanupPlan } from '../services/ai-assistant/types'
+import { getAiCapabilities } from '../services/ai/config'
 
 function newId() {
   return `msg-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`
 }
 
+const LOADING_STATES = [
+  'Evaluating...',
+  'Thinking...',
+  'Classifying...',
+  'Planning...',
+] as const
+
 type Props = {
   visible: boolean
   onClose: () => void
+  onRequirePremium: () => void
 }
 
-export const AiAssistantModal: React.FC<Props> = ({ visible, onClose }) => {
+export const AiAssistantModal: React.FC<Props> = ({ visible, onClose, onRequirePremium }) => {
   const { colors, isDark } = useAppTheme()
   const insets = useSafeAreaInsets()
   const [messages, setMessages] = useState<AssistantMessage[]>([])
@@ -46,9 +54,10 @@ export const AiAssistantModal: React.FC<Props> = ({ visible, onClose }) => {
   const [applyingCleanup, setApplyingCleanup] = useState(false)
   const [pendingCleanupPlan, setPendingCleanupPlan] = useState<CleanupPlan | null>(null)
   const [selectedCleanupActions, setSelectedCleanupActions] = useState<number[]>([])
-  const [keyboardVisible, setKeyboardVisible] = useState(false)
   const listRef = useRef<FlatList>(null)
   const inputRef = useRef<TextInput>(null)
+  const { keyboardShift, keyboardVisible } = useKeyboardOffset()
+  const [loadingStateIndex, setLoadingStateIndex] = useState(0)
   const prefill = useAiAssistantStore(state => state.prefill)
   const clearPrefill = useAiAssistantStore(state => state.clearPrefill)
   const aiCapabilities = getAiCapabilities()
@@ -61,19 +70,6 @@ export const AiAssistantModal: React.FC<Props> = ({ visible, onClose }) => {
   }, [visible, prefill, clearPrefill])
 
   React.useEffect(() => {
-    const showEvent = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow'
-    const hideEvent = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide'
-
-    const showSub = Keyboard.addListener(showEvent, () => setKeyboardVisible(true))
-    const hideSub = Keyboard.addListener(hideEvent, () => setKeyboardVisible(false))
-
-    return () => {
-      showSub.remove()
-      hideSub.remove()
-    }
-  }, [])
-
-  React.useEffect(() => {
     if (!visible) return
     setTimeout(() => listRef.current?.scrollToEnd({ animated: true }), 120)
   }, [messages, pendingCleanupPlan, visible])
@@ -81,6 +77,19 @@ export const AiAssistantModal: React.FC<Props> = ({ visible, onClose }) => {
   React.useEffect(() => {
     setSelectedCleanupActions(getInitialCleanupActionSelection(pendingCleanupPlan))
   }, [pendingCleanupPlan])
+
+  React.useEffect(() => {
+    if (!loading) {
+      setLoadingStateIndex(0)
+      return
+    }
+
+    const interval = setInterval(() => {
+      setLoadingStateIndex((current) => (current + 1) % LOADING_STATES.length)
+    }, 10000)
+
+    return () => clearInterval(interval)
+  }, [loading])
 
   const appendMessage = useCallback((role: AssistantMessage['role'], text: string) => {
     setMessages(prev => [...prev, { id: newId(), role, text }])
@@ -115,7 +124,21 @@ export const AiAssistantModal: React.FC<Props> = ({ visible, onClose }) => {
         return
       }
 
-      if (outcome.kind === 'cleanup_degraded' || outcome.kind === 'cleanup_failed' || outcome.kind === 'generic_failed' || outcome.kind === 'cleanup_no_actions' || outcome.kind === 'capture_no_notes') {
+      if (outcome.kind === 'upgrade_required') {
+        appendMessage('assistant', outcome.message)
+        onRequirePremium()
+        return
+      }
+
+      if (
+        outcome.kind === 'quota_exceeded' ||
+        outcome.kind === 'rate_limited' ||
+        outcome.kind === 'cleanup_degraded' ||
+        outcome.kind === 'cleanup_failed' ||
+        outcome.kind === 'generic_failed' ||
+        outcome.kind === 'cleanup_no_actions' ||
+        outcome.kind === 'capture_no_notes'
+      ) {
         appendMessage('assistant', outcome.message)
         return
       }
@@ -135,7 +158,7 @@ export const AiAssistantModal: React.FC<Props> = ({ visible, onClose }) => {
     } finally {
       setLoading(false)
     }
-  }, [input, loading, appendMessage, premiumEnabled])
+  }, [input, loading, appendMessage, onRequirePremium, premiumEnabled])
 
   const handleApplyCleanup = useCallback(async () => {
     if (!pendingCleanupPlan || applyingCleanup) return
@@ -181,10 +204,14 @@ export const AiAssistantModal: React.FC<Props> = ({ visible, onClose }) => {
       presentationStyle="fullScreen"
       onRequestClose={handleClose}
     >
-      <KeyboardAvoidingView
-        style={[styles.container, { backgroundColor: colors.colorBgMain }]}
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        keyboardVerticalOffset={insets.top}
+      <Animated.View
+        style={[
+          styles.container,
+          {
+            backgroundColor: colors.colorBgMain,
+            transform: [{ translateY: keyboardShift }],
+          },
+        ]}
       >
         {/* Header */}
         <View
@@ -219,94 +246,116 @@ export const AiAssistantModal: React.FC<Props> = ({ visible, onClose }) => {
             </Text>
           }
           ListFooterComponent={
-            pendingCleanupPlan ? (
-              <View
-                style={[
-                  styles.cleanupReviewCard,
-                  {
-                    backgroundColor: colors.colorBgElevated,
-                    borderColor: colors.colorBorder,
-                  },
-                ]}
-              >
-                <Text style={[styles.cleanupTitle, { color: colors.colorTextMain }]}>Cleanup review</Text>
-                <Text style={[styles.cleanupSummary, { color: colors.colorTextSecondary }]}>
-                  {pendingCleanupPlan.summary}
-                </Text>
-                <View style={styles.cleanupActionList}>
-                  {pendingCleanupPlan.actions.map((action, index) => (
-                    <TouchableOpacity
-                      key={`${action.type}-${index}`}
-                      style={[
-                        styles.cleanupActionRow,
-                        {
-                          borderColor: selectedCleanupActions.includes(index) ? colors.colorPrimary : colors.colorBorder,
-                          backgroundColor: selectedCleanupActions.includes(index)
-                            ? colors.colorBgMuted
-                            : colors.colorBgElevated,
-                        },
-                      ]}
-                      onPress={() => toggleCleanupAction(index)}
-                      activeOpacity={0.85}
-                    >
-                      <View
+            <View>
+              {loading ? (
+                <View
+                  style={[
+                    styles.loadingBubble,
+                    styles.bubbleAssistant,
+                    {
+                      backgroundColor: colors.colorBgElevated,
+                      borderColor: colors.colorBorder,
+                    },
+                  ]}
+                >
+                  <View style={styles.loadingRow}>
+                    <ActivityIndicator size="small" color={colors.colorTextSecondary} />
+                    <Text style={[styles.loadingText, { color: colors.colorTextSecondary }]}>
+                      {LOADING_STATES[loadingStateIndex]}
+                    </Text>
+                  </View>
+                </View>
+              ) : null}
+
+              {pendingCleanupPlan ? (
+                <View
+                  style={[
+                    styles.cleanupReviewCard,
+                    {
+                      backgroundColor: colors.colorBgElevated,
+                      borderColor: colors.colorBorder,
+                    },
+                  ]}
+                >
+                  <Text style={[styles.cleanupTitle, { color: colors.colorTextMain }]}>Cleanup review</Text>
+                  <Text style={[styles.cleanupSummary, { color: colors.colorTextSecondary }]}>
+                    {pendingCleanupPlan.summary}
+                  </Text>
+                  <View style={styles.cleanupActionList}>
+                    {pendingCleanupPlan.actions.map((action, index) => (
+                      <TouchableOpacity
+                        key={`${action.type}-${index}`}
                         style={[
-                          styles.cleanupCheckbox,
+                          styles.cleanupActionRow,
                           {
                             borderColor: selectedCleanupActions.includes(index) ? colors.colorPrimary : colors.colorBorder,
-                            backgroundColor: selectedCleanupActions.includes(index) ? colors.colorPrimary : 'transparent',
+                            backgroundColor: selectedCleanupActions.includes(index)
+                              ? colors.colorBgMuted
+                              : colors.colorBgElevated,
                           },
                         ]}
+                        onPress={() => toggleCleanupAction(index)}
+                        activeOpacity={0.85}
                       >
-                        {selectedCleanupActions.includes(index) ? (
-                          <Text style={[styles.cleanupCheckboxMark, { color: colors.colorBgMain }]}>✓</Text>
-                        ) : null}
-                      </View>
-                      <View style={styles.cleanupActionCopy}>
-                        <Text style={[styles.cleanupActionType, { color: colors.colorTextMain }]}>
-                          {action.type.replace(/_/g, ' ')}
-                        </Text>
-                        <Text style={[styles.cleanupActionReason, { color: colors.colorTextSecondary }]}>
-                          {action.reason}
-                        </Text>
-                      </View>
-                    </TouchableOpacity>
-                  ))}
-                </View>
-                <View style={styles.cleanupButtonRow}>
-                  <TouchableOpacity
-                    style={[
-                      styles.cleanupSecondaryButton,
-                      { borderColor: colors.colorBorder, backgroundColor: colors.colorBgMuted },
-                    ]}
-                    onPress={handleCancelCleanup}
-                    activeOpacity={0.8}
-                  >
-                    <Text style={[styles.cleanupSecondaryButtonText, { color: colors.colorTextMain }]}>
-                      Cancel
-                    </Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={[
-                      styles.cleanupPrimaryButton,
-                      { backgroundColor: colors.colorPrimary },
-                      applyingCleanup && styles.sendBtnDisabled,
-                    ]}
-                    onPress={handleApplyCleanup}
-                    disabled={applyingCleanup}
-                    activeOpacity={0.8}
-                  >
-                    {applyingCleanup ? (
-                      <ActivityIndicator size="small" color={colors.colorBgMain} />
-                    ) : (
-                      <Text style={[styles.cleanupPrimaryButtonText, { color: colors.colorBgMain }]}>
-                        Apply selected
+                        <View
+                          style={[
+                            styles.cleanupCheckbox,
+                            {
+                              borderColor: selectedCleanupActions.includes(index) ? colors.colorPrimary : colors.colorBorder,
+                              backgroundColor: selectedCleanupActions.includes(index) ? colors.colorPrimary : 'transparent',
+                            },
+                          ]}
+                        >
+                          {selectedCleanupActions.includes(index) ? (
+                            <Text style={[styles.cleanupCheckboxMark, { color: colors.colorBgMain }]}>✓</Text>
+                          ) : null}
+                        </View>
+                        <View style={styles.cleanupActionCopy}>
+                          <Text style={[styles.cleanupActionType, { color: colors.colorTextMain }]}>
+                            {action.type.replace(/_/g, ' ')}
+                          </Text>
+                          <Text style={[styles.cleanupActionReason, { color: colors.colorTextSecondary }]}>
+                            {action.reason}
+                          </Text>
+                        </View>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                  <View style={styles.cleanupButtonRow}>
+                    <TouchableOpacity
+                      style={[
+                        styles.cleanupSecondaryButton,
+                        { borderColor: colors.colorBorder, backgroundColor: colors.colorBgMuted },
+                      ]}
+                      onPress={handleCancelCleanup}
+                      activeOpacity={0.8}
+                    >
+                      <Text style={[styles.cleanupSecondaryButtonText, { color: colors.colorTextMain }]}>
+                        Cancel
                       </Text>
-                    )}
-                  </TouchableOpacity>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={[
+                        styles.cleanupPrimaryButton,
+                        { backgroundColor: colors.colorPrimary },
+                        applyingCleanup && styles.sendBtnDisabled,
+                      ]}
+                      onPress={handleApplyCleanup}
+                      disabled={applyingCleanup}
+                      activeOpacity={0.8}
+                    >
+                      {applyingCleanup ? (
+                        <ActivityIndicator size="small" color={colors.colorBgMain} />
+                      ) : (
+                        <Text style={[styles.cleanupPrimaryButtonText, { color: colors.colorBgMain }]}>
+                          Apply selected
+                        </Text>
+                      )}
+                    </TouchableOpacity>
+                  </View>
                 </View>
-              </View>
-            ) : null
+              ) : null}
+            </View>
           }
           renderItem={({ item }) => (
             <View
@@ -374,7 +423,7 @@ export const AiAssistantModal: React.FC<Props> = ({ visible, onClose }) => {
             }
           </TouchableOpacity>
         </View>
-      </KeyboardAvoidingView>
+      </Animated.View>
     </Modal>
   )
 }
@@ -436,6 +485,26 @@ const styles = StyleSheet.create({
   bubbleTextUser: {
   },
   bubbleTextAssistant: {
+  },
+  loadingBubble: {
+    alignSelf: 'flex-start',
+    maxWidth: '72%',
+    marginBottom: 12,
+    borderRadius: 16,
+    borderBottomLeftRadius: 4,
+    borderWidth: 1,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+  },
+  loadingRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  loadingText: {
+    fontSize: 14,
+    lineHeight: 20,
+    fontWeight: '600',
   },
   cleanupReviewCard: {
     marginHorizontal: 16,
